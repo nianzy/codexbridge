@@ -1,0 +1,7 @@
+{
+  "name": "app.codexbridge.nativehost",
+  "description": "Codex Bridge Native Messaging Host",
+  "path": "/Applications/Codex Bridge.app/Contents/Helpers/CodexBridgeNativeHost",
+  "type": "stdio",
+  "allowed_origins": ["chrome-extension://pnpgopcjhgfmnkefmdnoebmcbnnhnhee/"]
+}

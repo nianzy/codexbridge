@@ -1,0 +1,35 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Xcode user state and build products
+DerivedData/
+build/
+*.xcuserstate
+*.xccheckout
+*.xcscmblueprint
+xcuserdata/
+*.moved-aside
+
+# Swift Package Manager
+.build/
+.swiftpm/xcode/package.xcworkspace/xcuserdata/
+
+# App packaging and symbols
+*.app
+*.dSYM
+*.dSYM.zip
+*.ipa
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.p12
+*.mobileprovision
+
+# Temporary agent/tool output
+.tmp/
+tmp/
+*.log

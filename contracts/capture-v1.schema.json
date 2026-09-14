@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codexbridge.app/contracts/capture-v1.schema.json",
+  "title": "Codex Bridge Capture v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "source", "capture", "selection", "turns", "warnings"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "url", "title"],
+      "properties": {
+        "kind": { "const": "chatgpt-web" },
+        "url": { "type": "string", "format": "uri", "pattern": "^https://chatgpt\\.com/" },
+        "conversationId": { "type": ["string", "null"] },
+        "title": { "type": "string", "minLength": 1, "maxLength": 500 }
+      }
+    },
+    "capture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capturedAt", "scope", "attachmentCount", "complete"],
+      "properties": {
+        "capturedAt": { "type": "string", "format": "date-time" },
+        "scope": { "const": "rendered-current-page" },
+        "attachmentCount": { "type": "integer", "minimum": 0 },
+        "complete": { "type": "boolean" }
+      }
+    },
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["selectedTurnIds"],
+      "properties": {
+        "selectedTurnIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "turns": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/turn" }
+    },
+    "warnings": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "$defs": {
+    "message": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "idSource", "text"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "idSource": { "enum": ["dom", "dom-order"] },
+        "text": { "type": "string", "minLength": 1 }
+      }
+    },
+    "turn": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "index", "user", "complete"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "index": { "type": "integer", "minimum": 0 },
+        "user": { "$ref": "#/$defs/message" },
+        "assistant": { "oneOf": [{ "$ref": "#/$defs/message" }, { "type": "null" }] },
+        "complete": { "type": "boolean" }
+      }
+    }
+  }
+}

@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Codex Bridge</title>
+  <link rel="stylesheet" href="side-panel.css">
+</head>
+<body>
+  <header>
+    <div class="brand"><img class="mark" src="icons/icon32.png" alt=""><strong>Codex Bridge</strong></div>
+    <span class="privacy">仅当前页面</span>
+  </header>
+  <main>
+    <section id="loading" class="empty"><span class="spinner"></span><p>正在读取已渲染内容…</p></section>
+    <section id="error" class="empty hidden"><span class="empty-icon">!</span><h2>暂时无法读取</h2><p id="error-text"></p><button id="retry" class="secondary">重试</button></section>
+    <section id="capture" class="hidden">
+      <div class="eyebrow">CHATGPT WEB</div>
+      <h1 id="title"></h1>
+      <p id="summary" class="summary"></p>
+      <div id="warning" class="warning hidden"></div>
+      <div class="section-head"><strong>选择要保存的轮次</strong><button id="toggle-all" class="link">取消全选</button></div>
+      <div id="turns" class="turns"></div>
+    </section>
+  </main>
+  <footer id="footer" class="hidden">
+    <div><strong id="selected-count">0 轮</strong><small>保存后会出现在 Codex Bridge 的 Chat 会话列表</small></div>
+    <button id="send" class="primary">保存到 Codex Bridge</button>
+  </footer>
+  <script type="module" src="side-panel.js"></script>
+</body>
+</html>
