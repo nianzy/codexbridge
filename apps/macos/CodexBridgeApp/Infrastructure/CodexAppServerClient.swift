@@ -87,6 +87,7 @@ actor CodexAppServerClient: CodexClient {
                 "sortKey": .string("updated_at"),
                 "sortDirection": .string("desc"),
                 "useStateDbOnly": .bool(true),
+                "archived": .bool(false),
             ]
             if let cursor { params["cursor"] = .string(cursor) }
             let response = try await request(method: "thread/list", params: .object(params))
@@ -590,6 +591,10 @@ actor CodexAppServerClient: CodexClient {
     private func handleNotification(method: String, params: JSONValue?) {
         guard let params, let threadID = params["threadId"]?.stringValue else { return }
         switch method {
+        case "thread/archived":
+            emit(.threadArchived(threadID: threadID))
+        case "thread/unarchived":
+            emit(.threadUnarchived(threadID: threadID))
         case "thread/status/changed":
             let status = parseRuntimeStatus(params["status"])
             emit(.stateChanged(threadID: threadID, turnID: nil, state: executionState(for: status)))

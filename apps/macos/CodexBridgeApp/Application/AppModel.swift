@@ -44,6 +44,9 @@ final class AppModel {
     var chatGPTAppState: SourceConnectionState = .ready("需要授权")
     var browserExtensionInstallation: BrowserExtensionInstallation = .missing
     var preparedBrowserExtensionURL: URL?
+    var browserExtensionReloadRequired = false
+    var preparedBrowserExtensionVersion: String?
+    var appUpdateState: AppUpdateState = .idle
     var lastSubmission: ExecutionOperation?
     var activeChatGPTDraft: ChatGPTDraft?
     var queuedCodexInteractions: [CodexInteractionRequest] = []
@@ -59,6 +62,7 @@ final class AppModel {
     @ObservationIgnored private let orchestrator: ExecutionOrchestrator
     @ObservationIgnored private let captureValidator = CaptureValidator()
     @ObservationIgnored private let nativeMessagingInstaller = NativeMessagingInstaller()
+    @ObservationIgnored private let appUpdateChecker: any AppUpdateChecking
     @ObservationIgnored private let chatGPTAppCaptureService = ChatGPTAppCaptureService()
     @ObservationIgnored private var statusDismissTask: Task<Void, Never>?
     @ObservationIgnored private var detailTasks: [String: Task<CapturedConversation, Error>] = [:]
@@ -66,12 +70,19 @@ final class AppModel {
     @ObservationIgnored private var dirtyThreads: Set<String> = []
     @ObservationIgnored private var fileCache: [UUID: [ConversationFile]] = [:]
     @ObservationIgnored private var refreshInProgress = false
+    @ObservationIgnored private var conversationRefreshInProgress = false
+    @ObservationIgnored private var hasCompletedBootstrap = false
     @ObservationIgnored private var backgroundDetailTasks: [String: Task<Void, Never>] = [:]
     @ObservationIgnored private var codexEventTask: Task<Void, Never>?
 
-    init(repository: any ConversationRepository, codexClient: any CodexClient) {
+    init(
+        repository: any ConversationRepository,
+        codexClient: any CodexClient,
+        appUpdateChecker: any AppUpdateChecking = GitHubReleaseUpdateChecker()
+    ) {
         self.repository = repository
         self.codexClient = codexClient
+        self.appUpdateChecker = appUpdateChecker
         self.orchestrator = ExecutionOrchestrator(repository: repository, codexClient: codexClient)
     }
 
@@ -137,6 +148,7 @@ final class AppModel {
             chatGPTDrafts = try await repository.listChatGPTDrafts()
             refreshCapturedSourceStates()
             if selectedConversationID == nil { selectedConversationID = conversations.first?.id }
+            hasCompletedBootstrap = true
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -147,22 +159,38 @@ final class AppModel {
         await connection
     }
 
-    func reloadConversations() async {
+    func reloadConversations(reportErrors: Bool = true) async {
         do {
             try await drainCaptureInbox()
             conversations = try await repository.listConversations()
             refreshCapturedSourceStates()
             if selectedConversationID == nil { selectedConversationID = conversations.first?.id }
         } catch {
-            errorMessage = error.localizedDescription
+            if reportErrors { errorMessage = error.localizedDescription }
         }
     }
 
-    func refreshCodexConnection() async {
+    func refreshAllConversations(showConfirmation: Bool = true) async {
+        guard !conversationRefreshInProgress else { return }
+        conversationRefreshInProgress = true
+        defer { conversationRefreshInProgress = false }
+
+        await reloadConversations(reportErrors: showConfirmation)
+        await refreshCodexConnection(indicateProgress: showConfirmation)
+        refreshBrowserConnectionState()
+        if showConfirmation { showStatus("会话已刷新") }
+    }
+
+    func refreshAutomaticallyIfReady() async {
+        guard hasCompletedBootstrap else { return }
+        await refreshAllConversations(showConfirmation: false)
+    }
+
+    func refreshCodexConnection(indicateProgress: Bool = true) async {
         guard !refreshInProgress else { return }
         refreshInProgress = true
         defer { refreshInProgress = false }
-        codexState = .checking
+        if indicateProgress { codexState = .checking }
         do {
             let probe = try await codexClient.probe()
             models = probe.models
@@ -176,6 +204,15 @@ final class AppModel {
     private func synchronizeCodexThreads() async {
         do {
             let summaries = try await codexClient.listThreads(limit: 100)
+            let activeThreadIDs = Set(summaries.compactMap(\.codexThreadID))
+            let missingCodexConversations = conversations.filter { conversation in
+                conversation.sourceKind == .codex
+                    && conversation.codexThreadID.map { !activeThreadIDs.contains($0) } == true
+            }
+            for conversation in missingCodexConversations {
+                try await removeCodexConversation(conversation)
+            }
+
             var changed: [CapturedConversation] = []
             for summary in summaries {
                 if var cached = conversations.first(where: { $0.id == summary.id }), cached.captureScope == "app-server-thread-read" {
@@ -639,7 +676,14 @@ final class AppModel {
     func prepareBrowserConnection() {
         do {
             _ = try nativeMessagingInstaller.install()
-            preparedBrowserExtensionURL = try nativeMessagingInstaller.prepareExtensionDirectory()
+            let prepared = try nativeMessagingInstaller.prepareExtensionDirectory()
+            preparedBrowserExtensionURL = prepared.url
+            preparedBrowserExtensionVersion = prepared.version
+            if prepared.replacedExistingInstallation {
+                requireBrowserExtensionReload(for: prepared.version)
+            } else {
+                restoreBrowserExtensionReloadState(for: prepared.version)
+            }
             refreshBrowserConnectionState()
             isBrowserSetupPresented = true
         } catch {
@@ -651,6 +695,14 @@ final class AppModel {
         preparedBrowserExtensionURL = preparedBrowserExtensionURL
             ?? nativeMessagingInstaller.preparedExtensionDirectory()
         browserExtensionInstallation = nativeMessagingInstaller.browserExtensionInstallation()
+        if browserExtensionReloadRequired {
+            let browserName: String = switch browserExtensionInstallation {
+            case let .enabled(browser, _), let .disabled(browser, _): browser.shortName
+            case .missing: "浏览器"
+            }
+            chatGPTWebState = .ready("扩展已更新，请在 \(browserName) 扩展管理页重新加载")
+            return
+        }
         switch browserExtensionInstallation {
         case let .enabled(browser, _):
             chatGPTWebState = .connected("\(browser.shortName) 扩展已加载，可以从网页保存对话")
@@ -661,6 +713,27 @@ final class AppModel {
                 ? .ready("Codex Bridge 已准备好，请在 Chrome 或 Edge 中加载扩展")
                 : .ready("尚未设置浏览器扩展")
         }
+    }
+
+    func markBrowserExtensionReloaded() {
+        UserDefaults.standard.removeObject(forKey: Self.browserExtensionReloadVersionKey)
+        browserExtensionReloadRequired = false
+        refreshBrowserConnectionState()
+        showStatus("扩展更新已确认")
+    }
+
+    func checkForUpdatesAutomatically() async {
+        guard isAutomaticUpdateCheckDue else { return }
+        await checkForUpdates(showFailure: false)
+    }
+
+    func checkForUpdates() async {
+        await checkForUpdates(showFailure: true)
+    }
+
+    func openAvailableUpdate() {
+        guard case let .available(release) = appUpdateState else { return }
+        NSWorkspace.shared.open(release.pageURL)
     }
 
     var isBrowserExtensionEnabled: Bool {
@@ -705,6 +778,64 @@ final class AppModel {
             errorMessage = error.localizedDescription
         }
     }
+
+    func synchronizePreparedBrowserExtension() {
+        guard nativeMessagingInstaller.preparedExtensionDirectory() != nil else { return }
+        do {
+            _ = try nativeMessagingInstaller.install()
+            let prepared = try nativeMessagingInstaller.prepareExtensionDirectory()
+            preparedBrowserExtensionURL = prepared.url
+            preparedBrowserExtensionVersion = prepared.version
+            if prepared.replacedExistingInstallation {
+                requireBrowserExtensionReload(for: prepared.version)
+                showStatus("浏览器扩展已更新，请在扩展管理页重新加载")
+            } else {
+                restoreBrowserExtensionReloadState(for: prepared.version)
+            }
+        } catch {
+            // 启动时保持安静；用户打开“来源与权限”后仍可重新准备连接。
+        }
+    }
+
+    private func requireBrowserExtensionReload(for version: String) {
+        UserDefaults.standard.set(version, forKey: Self.browserExtensionReloadVersionKey)
+        browserExtensionReloadRequired = true
+    }
+
+    private func restoreBrowserExtensionReloadState(for version: String) {
+        let pendingVersion = UserDefaults.standard.string(forKey: Self.browserExtensionReloadVersionKey)
+        browserExtensionReloadRequired = pendingVersion == version
+    }
+
+    private static let browserExtensionReloadVersionKey = "codexbridge.browser-extension-reload-version"
+
+    private func checkForUpdates(showFailure: Bool) async {
+        guard appUpdateState != .checking else { return }
+        appUpdateState = .checking
+        do {
+            let release = try await appUpdateChecker.latestRelease(newerThan: CodexBridgeRelease.version)
+            UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.lastUpdateCheckKey)
+            if let release {
+                appUpdateState = .available(release)
+                showStatus("发现 Codex Bridge \(release.version)")
+            } else {
+                appUpdateState = .upToDate
+                if showFailure { showStatus("Codex Bridge 已是最新版本") }
+            }
+        } catch {
+            appUpdateState = showFailure
+                ? .failed(error.localizedDescription)
+                : .idle
+        }
+    }
+
+    private var isAutomaticUpdateCheckDue: Bool {
+        let timestamp = UserDefaults.standard.double(forKey: Self.lastUpdateCheckKey)
+        guard timestamp > 0 else { return true }
+        return Date().timeIntervalSince1970 - timestamp >= 24 * 60 * 60
+    }
+
+    private static let lastUpdateCheckKey = "codexbridge.last-update-check"
 
     func openCodex() {
         if let url = URL(string: "codex://") {
@@ -761,6 +892,12 @@ final class AppModel {
         switch event {
         case let .threadChanged(threadID):
             scheduleDetailRefresh(threadID)
+        case let .threadArchived(threadID):
+            if let conversation = conversations.first(where: { $0.codexThreadID == threadID }) {
+                try? await removeCodexConversation(conversation)
+            }
+        case .threadUnarchived:
+            await synchronizeCodexThreads()
         case let .stateChanged(threadID, turnID, state):
             updateConversationState(threadID: threadID, turnID: turnID, state: state)
             for index in operations.indices where operations[index].threadID == threadID {
@@ -783,6 +920,22 @@ final class AppModel {
             )
         case let .disconnected(message):
             codexState = .unavailable(message)
+        }
+    }
+
+    private func removeCodexConversation(_ conversation: CapturedConversation) async throws {
+        guard conversation.sourceKind == .codex else { return }
+        if let threadID = conversation.codexThreadID {
+            detailTasks.removeValue(forKey: threadID)?.cancel()
+            backgroundDetailTasks.removeValue(forKey: threadID)?.cancel()
+            dirtyThreads.remove(threadID)
+            detailVersions.removeValue(forKey: threadID)
+        }
+        conversationDetailErrors.removeValue(forKey: conversation.id)
+        try await repository.removeConversation(id: conversation.id)
+        conversations.removeAll { $0.id == conversation.id }
+        if selectedConversationID == conversation.id {
+            selectedConversationID = conversations.first?.id
         }
     }
 

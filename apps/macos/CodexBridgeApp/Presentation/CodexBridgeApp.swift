@@ -28,7 +28,11 @@ struct CodexBridgeApp: App {
             RootView(model: model, accessibility: accessibility)
             .background(MainWindowAccessor(appearance: appearance))
             .preferredColorScheme(preferredColorScheme)
-            .task { await model.bootstrap() }
+            .task {
+                model.synchronizePreparedBrowserExtension()
+                await model.bootstrap()
+                await model.checkForUpdatesAutomatically()
+            }
         }
         .defaultSize(width: 1240, height: 780)
         .windowResizability(.contentMinSize)

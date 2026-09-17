@@ -55,8 +55,25 @@ struct RootView: View {
             .onReceive(DistributedNotificationCenter.default().publisher(for: Notification.Name("app.codexbridge.captureImported"))) { _ in
                 Task { await model.reloadConversations() }
             }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                Task {
+                    await model.refreshAutomaticallyIfReady()
+                    await model.checkForUpdatesAutomatically()
+                }
+            }
             .task(id: model.selectedConversationID) {
                 await model.loadSelectedConversationDetails()
+            }
+            .task {
+                while !Task.isCancelled {
+                    do {
+                        try await Task.sleep(for: .seconds(15))
+                    } catch {
+                        break
+                    }
+                    guard NSApplication.shared.isActive else { continue }
+                    await model.refreshAutomaticallyIfReady()
+                }
             }
     }
 }

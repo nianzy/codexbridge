@@ -252,6 +252,30 @@ struct ChatGPTNewConversationActionTests {
 }
 
 struct BrowserExtensionInstallationTests {
+    @Test func updatesPreparedExtensionWhenBundledVersionChanges() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("codexbridge-extension-update-\(UUID())", isDirectory: true)
+        let source = root.appendingPathComponent("source", isDirectory: true)
+        let support = root.appendingPathComponent("support", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try writeExtension(version: "1.1.0", marker: "old", to: source)
+        let installer = NativeMessagingInstaller(extensionSourceURL: source, applicationSupportURL: support)
+        let initial = try installer.prepareExtensionDirectory()
+        #expect(initial.version == "1.1.0")
+        #expect(!initial.replacedExistingInstallation)
+
+        try FileManager.default.removeItem(at: source)
+        try writeExtension(version: "1.1.1", marker: "new", to: source)
+        let updated = try installer.prepareExtensionDirectory()
+        #expect(updated.version == "1.1.1")
+        #expect(updated.replacedExistingInstallation)
+        #expect(try String(contentsOf: updated.url.appendingPathComponent("marker.txt"), encoding: .utf8) == "new")
+
+        let unchanged = try installer.prepareExtensionDirectory()
+        #expect(!unchanged.replacedExistingInstallation)
+    }
+
     @Test func detectsEnabledExtensionAcrossChromeAndEdge() throws {
         let chromeRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("codexbridge-chrome-state-\(UUID())", isDirectory: true)
@@ -299,5 +323,16 @@ struct BrowserExtensionInstallationTests {
         ]
         let data = try JSONSerialization.data(withJSONObject: object)
         try data.write(to: profile.appendingPathComponent("Preferences"), options: .atomic)
+    }
+
+    private func writeExtension(version: String, marker: String, to directory: URL) throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let manifest = try JSONSerialization.data(withJSONObject: [
+            "manifest_version": 3,
+            "name": "Codex Bridge Test",
+            "version": version,
+        ])
+        try manifest.write(to: directory.appendingPathComponent("manifest.json"), options: .atomic)
+        try marker.write(to: directory.appendingPathComponent("marker.txt"), atomically: true, encoding: .utf8)
     }
 }

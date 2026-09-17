@@ -68,6 +68,7 @@ private actor MemoryRepository: ConversationRepository {
     func prepare() async throws {}
     func listConversations() async throws -> [CapturedConversation] { conversations }
     func saveConversation(_ conversation: CapturedConversation) async throws { conversations.append(conversation) }
+    func removeConversation(id: UUID) async throws { conversations.removeAll { $0.id == id } }
     func loadDraft(for sourceConversationID: UUID) async throws -> HandoffDraft? { drafts[sourceConversationID] }
     func saveDraft(_ draft: HandoffDraft) async throws { drafts[draft.sourceConversationID] = draft }
     func operation(for fingerprint: String) async throws -> ExecutionOperation? { operations[fingerprint] }
@@ -79,6 +80,99 @@ private actor MemoryRepository: ConversationRepository {
     func loadChatGPTDraft(for sourceConversationID: UUID) async throws -> ChatGPTDraft? { nil }
     func listChatGPTDrafts() async throws -> [ChatGPTDraft] { [] }
     func clearLocalData() async throws {}
+}
+
+struct CodexArchiveSynchronizationTests {
+    @Test @MainActor func refreshRemovesMissingCodexThreadAndKeepsChatConversation() async throws {
+        let repository = MemoryRepository()
+        var codexConversation = CapturedConversation.syntheticSamples()[1]
+        codexConversation.codexThreadID = "archived-thread"
+        let chatConversation = CapturedConversation.syntheticSamples()[0]
+        try await repository.saveConversation(codexConversation)
+        try await repository.saveConversation(chatConversation)
+
+        let model = AppModel(repository: repository, codexClient: EmptyThreadListClient())
+        model.conversations = [codexConversation, chatConversation]
+        model.selectedConversationID = codexConversation.id
+
+        await model.refreshCodexConnection()
+
+        #expect(model.conversations.map(\.id) == [chatConversation.id])
+        #expect(model.selectedConversationID == chatConversation.id)
+        #expect(try await repository.listConversations().map(\.id) == [chatConversation.id])
+    }
+
+    @Test @MainActor func automaticRefreshFindsNewThreadAndRemovesItAfterExternalArchive() async throws {
+        let repository = MemoryRepository()
+        let client = MutableThreadListClient()
+        let model = AppModel(repository: repository, codexClient: client)
+        await model.bootstrap()
+
+        var newConversation = CapturedConversation.syntheticSamples()[1]
+        newConversation.codexThreadID = "external-thread"
+        await client.setThreads([newConversation])
+
+        await model.refreshAutomaticallyIfReady()
+
+        #expect(model.conversations.map(\.id) == [newConversation.id])
+        #expect(model.statusMessage == nil)
+
+        await client.setThreads([])
+        await model.refreshAutomaticallyIfReady()
+
+        #expect(model.conversations.isEmpty)
+        #expect(try await repository.listConversations().isEmpty)
+    }
+}
+
+struct AppUpdateCheckerTests {
+    @Test func selectsNewestPublishedReleaseAboveCurrentVersion() throws {
+        let data = Data(
+            """
+            [
+              {"tag_name":"v1.1.1-beta.1","name":"Current","html_url":"https://example.com/current","draft":false,"published_at":"2026-09-18T00:00:00Z"},
+              {"tag_name":"v1.2.0-beta.1","name":"Codex Bridge 1.2 Beta","html_url":"https://example.com/new","draft":false,"published_at":"2026-09-19T00:00:00Z"},
+              {"tag_name":"v2.0.0","name":"Draft","html_url":"https://example.com/draft","draft":true,"published_at":"2026-09-20T00:00:00Z"}
+            ]
+            """.utf8
+        )
+
+        let release = try GitHubReleaseUpdateChecker.newerRelease(in: data, than: "1.1.1")
+
+        #expect(release?.version == "1.2.0")
+        #expect(release?.title == "Codex Bridge 1.2 Beta")
+        #expect(release?.pageURL.absoluteString == "https://example.com/new")
+    }
+
+    @Test func ignoresReleaseWithSameNumericVersion() throws {
+        let data = Data(
+            """
+            [{"tag_name":"v1.1.1-beta.1","name":"Same","html_url":"https://example.com/same","draft":false,"published_at":"2026-09-18T00:00:00Z"}]
+            """.utf8
+        )
+
+        #expect(try GitHubReleaseUpdateChecker.newerRelease(in: data, than: "1.1.1") == nil)
+    }
+}
+
+private actor EmptyThreadListClient: CodexClient {
+    func probe() async throws -> CodexProbe { .init(accountLabel: "测试", version: "测试", models: []) }
+    func listThreads(limit: Int) async throws -> [CapturedConversation] { [] }
+    func createDraftThread(_ handoff: FrozenHandoff) async throws -> String { "unused" }
+    func stop() async {}
+}
+
+private actor MutableThreadListClient: CodexClient {
+    private var threads: [CapturedConversation] = []
+
+    func setThreads(_ threads: [CapturedConversation]) {
+        self.threads = threads
+    }
+
+    func probe() async throws -> CodexProbe { .init(accountLabel: "测试", version: "测试", models: []) }
+    func listThreads(limit: Int) async throws -> [CapturedConversation] { Array(threads.prefix(limit)) }
+    func createDraftThread(_ handoff: FrozenHandoff) async throws -> String { "unused" }
+    func stop() async {}
 }
 
 struct TransferModelTests {

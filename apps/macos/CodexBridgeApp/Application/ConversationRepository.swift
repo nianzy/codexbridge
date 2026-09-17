@@ -4,6 +4,7 @@ protocol ConversationRepository: Sendable {
     func prepare() async throws
     func listConversations() async throws -> [CapturedConversation]
     func saveConversation(_ conversation: CapturedConversation) async throws
+    func removeConversation(id: UUID) async throws
     func loadDraft(for sourceConversationID: UUID) async throws -> HandoffDraft?
     func saveDraft(_ draft: HandoffDraft) async throws
     func operation(for fingerprint: String) async throws -> ExecutionOperation?

@@ -41,7 +41,8 @@ function readRenderedConversation() {
 
   const url = new URL(window.location.href);
   const pathParts = url.pathname.split("/").filter(Boolean);
-  const conversationId = pathParts[0] === "c" ? pathParts[1] || null : null;
+  const conversationIndex = pathParts.lastIndexOf("c");
+  const conversationId = conversationIndex >= 0 ? pathParts[conversationIndex + 1] || null : null;
   const attachmentCount = document.querySelectorAll("a[href*='/backend-api/files/'], [data-testid*='attachment']").length;
   const warnings = [];
   if (messages.some((message) => message.value.idSource === "dom-order")) {

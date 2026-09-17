@@ -13,6 +13,7 @@ struct ConversationWorkspace: View {
     @State private var archiveCandidate: CapturedConversation?
     @State private var undoArchivedID: UUID?
     @State private var selectionAnchorTurnID: String?
+    @State private var isRefreshingConversations = false
     @State private var navigationColumnWidth: CGFloat = 232
     @State private var conversationColumnWidth: CGFloat = 360
     @AppStorage("codexbridge.pinned-conversation-ids") private var pinnedStore = ""
@@ -100,9 +101,13 @@ struct ConversationWorkspace: View {
         .onAppear {
             navigationColumnWidth = CGFloat(savedNavigationColumnWidth)
             conversationColumnWidth = CGFloat(savedConversationColumnWidth)
+            pruneStoredConversationIDs()
             ensureVisibleSelection()
         }
-        .onChange(of: model.conversations.count) { _, _ in ensureVisibleSelection() }
+        .onChange(of: model.conversations.map(\.id)) { _, _ in
+            pruneStoredConversationIDs()
+            ensureVisibleSelection()
+        }
         .onChange(of: model.selectedConversationID) { _, _ in
             revealTurnID = nil
             selectionAnchorTurnID = nil
@@ -271,6 +276,31 @@ struct ConversationWorkspace: View {
                         .font(.system(size: 18, weight: .bold))
                         .lineLimit(1)
                     Spacer()
+
+                    Button {
+                        refreshConversations()
+                    } label: {
+                        HStack(spacing: 6) {
+                            if isRefreshingConversations {
+                                ProgressView()
+                                    .controlSize(.small)
+                                    .frame(width: 12, height: 12)
+                            } else {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 11, weight: .semibold))
+                            }
+                            Text("刷新")
+                        }
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .foregroundStyle(CodexBridgePalette.secondaryText)
+                        .padding(.horizontal, 10)
+                        .frame(height: 32)
+                        .background(CodexBridgePalette.raisedSurface, in: RoundedRectangle(cornerRadius: CodexBridgeRadius.small))
+                        .overlay(RoundedRectangle(cornerRadius: CodexBridgeRadius.small).stroke(CodexBridgePalette.border, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isRefreshingConversations)
+                    .help("重新读取已保存的 ChatGPT 对话和 Codex 会话")
 
                     Menu {
                         ForEach(ConversationSortMode.allCases) { mode in
@@ -863,6 +893,22 @@ struct ConversationWorkspace: View {
         if !filteredConversations.contains(where: { $0.id == model.selectedConversationID }) {
             model.selectedConversationID = filteredConversations.first?.id
         }
+    }
+
+    private func refreshConversations() {
+        guard !isRefreshingConversations else { return }
+        isRefreshingConversations = true
+        Task { @MainActor in
+            await model.refreshAllConversations()
+            isRefreshingConversations = false
+            ensureVisibleSelection()
+        }
+    }
+
+    private func pruneStoredConversationIDs() {
+        let available = Set(model.conversations.map { $0.id.uuidString })
+        pinnedStore = pinnedIDs.intersection(available).sorted().joined(separator: ",")
+        archivedStore = archivedIDs.intersection(available).sorted().joined(separator: ",")
     }
 
     private func togglePinned(_ conversationID: UUID) {

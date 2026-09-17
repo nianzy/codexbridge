@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Codex Bridge for ChatGPT",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyoTop8Km7wTmvp8ZZyOI4e2qqUQ4IGsOmQ/JkWBRLUHu9FT6BUVZw32ClgxGlJYnhp0YmWF5Kmy3eBhJcdEEBAy6bv4/noGyQltjF/YYXyzP0nV93wRGlL1QATviPQsruOaUJe1ACoiCTzLLupG+Zk8y6i1yP5Nc33J3tYDU5+0wwrdS2dRXUdRUAxzax2S6p9POvJUZHyQQWFiPSRNV1ng8Han+hNPMVs025BkdmBwv/sqeZRhpDCT0kkDDwmpWIoo2Ld9JqAadpnbVx6PPDAf4K2L6v1LyeARnTxu9bhv+eH4Z3F1CxBsL/Z4y1CEveAPy0vQNwXnVJe5J+1VoGwIDAQAB",
   "description": "将 ChatGPT 网页中选中的对话轮次保存到 Codex Bridge。",
   "icons": {
@@ -10,7 +10,7 @@
     "64": "icons/icon64.png",
     "128": "icons/icon128.png"
   },
-  "permissions": ["activeTab", "nativeMessaging", "sidePanel", "storage"],
+  "permissions": ["activeTab", "nativeMessaging", "sidePanel", "storage", "webNavigation"],
   "host_permissions": ["https://chatgpt.com/*"],
   "background": { "service_worker": "service-worker.js", "type": "module" },
   "content_scripts": [

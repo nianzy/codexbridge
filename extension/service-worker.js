@@ -4,6 +4,14 @@ chrome.runtime.onInstalled.addListener(() => {
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
 });
 
+chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
+  notifyPageChanged(details, "history");
+});
+
+chrome.webNavigation.onCompleted.addListener((details) => {
+  notifyPageChanged(details, "completed");
+});
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "CODEX_BRIDGE_CAPTURE_CURRENT") {
     captureCurrentTab().then(sendResponse);
@@ -23,10 +31,20 @@ async function captureCurrentTab() {
   }
   try {
     const payload = await chrome.tabs.sendMessage(tab.id, { type: "CODEX_BRIDGE_READ_RENDERED_TURNS" });
-    return { ok: true, payload };
+    return { ok: true, payload, tabId: tab.id, tabUrl: tab.url };
   } catch (_error) {
     return { ok: false, error: "当前页面尚未准备好，请刷新 ChatGPT 后重试。" };
   }
+}
+
+function notifyPageChanged(details, reason) {
+  if (details.frameId !== 0 || !details.url?.startsWith(CHATGPT_ORIGIN)) return;
+  chrome.runtime.sendMessage({
+    type: "CODEX_BRIDGE_PAGE_CHANGED",
+    tabId: details.tabId,
+    url: details.url,
+    reason
+  }).catch(() => {});
 }
 
 async function sendToNativeHost(payload) {

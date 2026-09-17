@@ -67,8 +67,22 @@ enum BrowserExtensionInstallation: Equatable, Sendable {
     case enabled(browser: SupportedExtensionBrowser, profile: String)
 }
 
+struct PreparedBrowserExtension: Equatable, Sendable {
+    let url: URL
+    let version: String
+    let replacedExistingInstallation: Bool
+}
+
 struct NativeMessagingInstaller: Sendable {
     static let extensionID = "pnpgopcjhgfmnkefmdnoebmcbnnhnhee"
+
+    private let extensionSourceURL: URL?
+    private let applicationSupportURL: URL?
+
+    init(extensionSourceURL: URL? = nil, applicationSupportURL: URL? = nil) {
+        self.extensionSourceURL = extensionSourceURL
+        self.applicationSupportURL = applicationSupportURL
+    }
 
     func install() throws -> [URL] {
         let helperURL = Bundle.main.bundleURL
@@ -116,7 +130,8 @@ struct NativeMessagingInstaller: Sendable {
     }
 
     func extensionDirectory() throws -> URL {
-        guard let directory = Bundle.main.resourceURL?.appendingPathComponent("extension", isDirectory: true),
+        guard let directory = extensionSourceURL
+                ?? Bundle.main.resourceURL?.appendingPathComponent("extension", isDirectory: true),
               FileManager.default.fileExists(atPath: directory.appendingPathComponent("manifest.json").path) else {
             throw NativeMessagingInstallError.missingExtension
         }
@@ -124,14 +139,12 @@ struct NativeMessagingInstaller: Sendable {
     }
 
     /// Chromium 浏览器的“加载已解压的扩展程序”需要普通文件夹，不能直接选择 App 包内资源。
-    func prepareExtensionDirectory() throws -> URL {
+    func prepareExtensionDirectory() throws -> PreparedBrowserExtension {
         let source = try extensionDirectory()
-        let applicationSupport = try FileManager.default.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        )
+        guard let sourceVersion = extensionVersion(at: source) else {
+            throw NativeMessagingInstallError.missingExtension
+        }
+        let applicationSupport = try applicationSupportDirectory(create: true)
         let legacyDestination = applicationSupport
             .appendingPathComponent("Sidely", isDirectory: true)
             .appendingPathComponent("ChromeExtension", isDirectory: true)
@@ -141,20 +154,26 @@ struct NativeMessagingInstaller: Sendable {
         let destination = FileManager.default.fileExists(atPath: legacyDestination.path)
             ? legacyDestination
             : support.appendingPathComponent("ChromeExtension", isDirectory: true)
-        if FileManager.default.fileExists(atPath: destination.path) {
-            try FileManager.default.removeItem(at: destination)
+        let destinationExists = FileManager.default.fileExists(atPath: destination.path)
+        let installedVersion = extensionVersion(at: destination)
+        let requiresCopy = !destinationExists || installedVersion != sourceVersion
+        if requiresCopy {
+            let staging = support.appendingPathComponent(".ChromeExtension-\(UUID().uuidString)", isDirectory: true)
+            try FileManager.default.copyItem(at: source, to: staging)
+            if destinationExists {
+                try FileManager.default.removeItem(at: destination)
+            }
+            try FileManager.default.moveItem(at: staging, to: destination)
         }
-        try FileManager.default.copyItem(at: source, to: destination)
-        return destination
+        return PreparedBrowserExtension(
+            url: destination,
+            version: sourceVersion,
+            replacedExistingInstallation: destinationExists && requiresCopy
+        )
     }
 
     func preparedExtensionDirectory() -> URL? {
-        guard let support = try? FileManager.default.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: false
-        ) else { return nil }
+        guard let support = try? applicationSupportDirectory(create: false) else { return nil }
         let directory = support
             .appendingPathComponent("Codex Bridge", isDirectory: true)
             .appendingPathComponent("ChromeExtension", isDirectory: true)
@@ -167,6 +186,30 @@ struct NativeMessagingInstaller: Sendable {
         return FileManager.default.fileExists(atPath: legacyDirectory.appendingPathComponent("manifest.json").path)
             ? legacyDirectory
             : nil
+    }
+
+    private func extensionVersion(at directory: URL) -> String? {
+        let manifestURL = directory.appendingPathComponent("manifest.json")
+        guard let data = try? Data(contentsOf: manifestURL),
+              let manifest = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        return manifest["version"] as? String
+    }
+
+    private func applicationSupportDirectory(create: Bool) throws -> URL {
+        if let applicationSupportURL {
+            if create {
+                try FileManager.default.createDirectory(at: applicationSupportURL, withIntermediateDirectories: true)
+            }
+            return applicationSupportURL
+        }
+        return try FileManager.default.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: create
+        )
     }
 
     func hasCurrentNativeHostManifest() -> Bool {

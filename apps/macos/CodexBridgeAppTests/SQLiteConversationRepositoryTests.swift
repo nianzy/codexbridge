@@ -64,4 +64,22 @@ struct SQLiteConversationRepositoryTests {
         #expect(try await repository.listLinks().isEmpty)
         #expect(try await repository.listChatGPTDrafts().isEmpty)
     }
+
+    @Test func removesOnlyRequestedConversation() async throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("codexbridge-tests", isDirectory: true)
+            .appendingPathComponent("\(UUID().uuidString).sqlite")
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let repository = SQLiteConversationRepository(databaseURL: url)
+        try await repository.prepare()
+
+        let conversations = CapturedConversation.syntheticSamples()
+        try await repository.saveConversation(conversations[0])
+        try await repository.saveConversation(conversations[1])
+        try await repository.removeConversation(id: conversations[0].id)
+
+        #expect(try await repository.listConversations().map(\.id) == [conversations[1].id])
+        await repository.close()
+    }
 }

@@ -382,6 +382,8 @@ struct CodexInteractionRequest: Identifiable, Hashable, Sendable {
 
 enum CodexRuntimeEvent: Sendable {
     case threadChanged(threadID: String)
+    case threadArchived(threadID: String)
+    case threadUnarchived(threadID: String)
     case stateChanged(threadID: String, turnID: String?, state: ExecutionState)
     case interaction(CodexInteractionRequest)
     case disconnected(String)

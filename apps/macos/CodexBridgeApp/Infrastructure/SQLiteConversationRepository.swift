@@ -213,6 +213,14 @@ actor SQLiteConversationRepository: ConversationRepository {
         )
     }
 
+    func removeConversation(id: UUID) async throws {
+        try ensurePrepared()
+        try write(
+            sql: "DELETE FROM conversations WHERE id = ?",
+            values: [.text(id.uuidString)]
+        )
+    }
+
     func loadDraft(for sourceConversationID: UUID) async throws -> HandoffDraft? {
         try ensurePrepared()
         let rows = try readPayloads(

@@ -1,23 +1,62 @@
 let payload = null;
 let selected = new Set();
+let capturedTabId = null;
+let reloadTimer = null;
+let loadSequence = 0;
 
 const elements = Object.fromEntries([...document.querySelectorAll("[id]")].map((element) => [element.id, element]));
-elements.retry.addEventListener("click", load);
+elements.retry.addEventListener("click", () => load({ reason: "manual" }));
+elements.refresh.addEventListener("click", () => load({ reason: "manual" }));
 elements["toggle-all"].addEventListener("click", toggleAll);
 elements.send.addEventListener("click", send);
 
-load();
+chrome.runtime.onMessage.addListener((message) => {
+  if (message?.type !== "CODEX_BRIDGE_PAGE_CHANGED") return;
+  scheduleReload({ tabId: message.tabId, url: message.url, reason: "navigation" });
+});
 
-async function load() {
+chrome.tabs.onActivated.addListener(({ tabId }) => {
+  scheduleReload({ tabId, reason: "tab-activated" });
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (!tab.active || (!changeInfo.url && changeInfo.status !== "complete")) return;
+  scheduleReload({ tabId, url: changeInfo.url || tab.url, reason: "tab-updated" });
+});
+
+load({ reason: "initial" });
+
+async function load({ reason = "manual", expectedTabId = null, expectedUrl = null } = {}) {
+  const sequence = ++loadSequence;
+  const previousPayload = payload;
+  const previousSelection = new Set(selected);
   show("loading");
-  const response = await chrome.runtime.sendMessage({ type: "CODEX_BRIDGE_CAPTURE_CURRENT" });
-  if (!response?.ok || !response.payload?.turns?.length) {
+  elements.refresh.disabled = true;
+
+  let response = null;
+  let captureIsFresh = false;
+  const attempts = reason === "initial" ? 1 : 5;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    response = await chrome.runtime.sendMessage({ type: "CODEX_BRIDGE_CAPTURE_CURRENT" });
+    if (sequence !== loadSequence) return;
+    captureIsFresh = isFreshCapture(response, previousPayload, expectedTabId, expectedUrl);
+    if (captureIsFresh) break;
+    if (response?.error?.startsWith("请先打开")) break;
+    if (attempt < attempts - 1) await wait(350 + attempt * 150);
+  }
+
+  if (sequence !== loadSequence) return;
+  elements.refresh.disabled = false;
+  if (!captureIsFresh) {
     elements["error-text"].textContent = response?.error || "当前页面没有可捕获的完整文字轮次。";
     show("error");
     return;
   }
-  payload = response.payload;
-  selected = new Set(payload.turns.map((turn) => turn.id));
+
+  const nextPayload = response.payload;
+  selected = selectionForReload(previousPayload, nextPayload, previousSelection);
+  payload = nextPayload;
+  capturedTabId = response.tabId ?? expectedTabId;
   elements.title.textContent = payload.source.title;
   elements.summary.textContent = `${payload.turns.length} 轮已渲染讨论 · ${payload.capture.attachmentCount} 个附件不传输`;
   const warnings = payload.warnings || [];
@@ -26,6 +65,55 @@ async function load() {
   renderTurns();
   show("capture");
   elements.footer.classList.remove("hidden");
+}
+
+function scheduleReload({ tabId, url = null, reason }) {
+  clearTimeout(reloadTimer);
+  reloadTimer = setTimeout(async () => {
+    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!activeTab?.id || activeTab.id !== tabId) return;
+    if (tabId === capturedTabId && url && payload?.source?.url === url && reason !== "tab-updated") return;
+    load({ reason, expectedTabId: tabId, expectedUrl: url || activeTab.url });
+  }, reason === "navigation" ? 500 : 180);
+}
+
+function isFreshCapture(response, previousPayload, expectedTabId, expectedUrl) {
+  if (!response?.ok || !response.payload?.turns?.length) return false;
+  if (expectedTabId != null && response.tabId !== expectedTabId) return false;
+  if (expectedUrl && conversationID(expectedUrl) !== conversationID(response.payload.source?.url)) return false;
+
+  const changedConversation = previousPayload
+    && conversationID(previousPayload.source?.url) !== conversationID(response.payload.source?.url);
+  if (changedConversation && turnSignature(previousPayload) === turnSignature(response.payload)) return false;
+  return true;
+}
+
+function selectionForReload(previousPayload, nextPayload, previousSelection) {
+  if (!previousPayload || conversationID(previousPayload.source?.url) !== conversationID(nextPayload.source?.url)) {
+    return new Set(nextPayload.turns.map((turn) => turn.id));
+  }
+  const previousTurnIDs = new Set(previousPayload.turns.map((turn) => turn.id));
+  return new Set(nextPayload.turns
+    .filter((turn) => previousSelection.has(turn.id) || !previousTurnIDs.has(turn.id))
+    .map((turn) => turn.id));
+}
+
+function conversationID(value) {
+  try {
+    const parts = new URL(value).pathname.split("/").filter(Boolean);
+    const conversationIndex = parts.lastIndexOf("c");
+    return conversationIndex >= 0 ? parts[conversationIndex + 1] || "" : "";
+  } catch (_error) {
+    return "";
+  }
+}
+
+function turnSignature(value) {
+  return value?.turns?.map((turn) => `${turn.id}:${turn.user?.text || ""}:${turn.assistant?.text || ""}`).join("|") || "";
+}
+
+function wait(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function renderTurns() {

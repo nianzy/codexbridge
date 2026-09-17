@@ -40,7 +40,7 @@ struct SettingsView: View {
                 case .privacy:
                     LocalDataSettingsPane(model: model)
                 case .about:
-                    AboutSettingsPane()
+                    AboutSettingsPane(model: model)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -257,10 +257,14 @@ struct SourcesView: View {
                             title: "ChatGPT 网页版",
                             state: model.chatGPTWebState,
                             detail: "在 ChatGPT 网页点击 Codex Bridge 扩展，选择需要的对话内容并保存到本机。",
-                            statusDetail: model.isBrowserExtensionEnabled
+                            statusDetail: model.browserExtensionReloadRequired
+                                ? "新版扩展文件已经准备好，请在浏览器扩展管理页点击“重新加载”。"
+                                : model.isBrowserExtensionEnabled
                                 ? "扩展已就绪。保存后，对话会出现在左侧 Chat 列表。"
                                 : "完成一次设置后，即可从网页保存对话到 Codex Bridge。",
-                            actionTitle: model.isBrowserExtensionEnabled ? "查看连接" : "设置…",
+                            actionTitle: model.browserExtensionReloadRequired
+                                ? "完成更新…"
+                                : (model.isBrowserExtensionEnabled ? "查看连接" : "设置…"),
                             action: { model.prepareBrowserConnection() }
                         )
                         ChatGPTAppSourceCard(model: model, accessibility: accessibility)
@@ -467,13 +471,23 @@ private struct BrowserConnectionSetupView: View {
 
                     browserManagementStep
 
-                    setupStep(
-                        number: 2,
-                        title: "加载 Codex Bridge 扩展",
-                        detail: "开启“开发者模式”，点击“加载已解压的扩展程序”。在文件选择窗口按 ⇧⌘G，再粘贴下面的完整路径。",
-                        actionTitle: "在访达中显示",
-                        action: model.revealPreparedBrowserExtension
-                    )
+                    if model.browserExtensionReloadRequired {
+                        setupStep(
+                            number: 2,
+                            title: "重新加载 Codex Bridge 扩展",
+                            detail: "扩展文件已自动更新。在扩展管理页找到 Codex Bridge，点击卡片上的“重新加载”按钮。",
+                            actionTitle: "我已重新加载",
+                            action: model.markBrowserExtensionReloaded
+                        )
+                    } else {
+                        setupStep(
+                            number: 2,
+                            title: "加载 Codex Bridge 扩展",
+                            detail: "开启“开发者模式”，点击“加载已解压的扩展程序”。在文件选择窗口按 ⇧⌘G，再粘贴下面的完整路径。",
+                            actionTitle: "在访达中显示",
+                            action: model.revealPreparedBrowserExtension
+                        )
+                    }
 
                     if let url = model.preparedBrowserExtensionURL {
                         VStack(alignment: .leading, spacing: 11) {
@@ -522,11 +536,17 @@ private struct BrowserConnectionSetupView: View {
             Divider().overlay(CodexBridgePalette.border)
 
             HStack {
-                Text(model.isBrowserExtensionEnabled ? "扩展已经加载，可以开始使用" : "加载完成后，请重新检查连接")
+                Text(footerStatus)
                     .font(.caption)
                     .foregroundStyle(CodexBridgePalette.secondaryText)
                 Spacer()
-                Button("重新检查") { model.refreshBrowserConnectionState() }
+                Button(model.browserExtensionReloadRequired ? "我已重新加载" : "重新检查") {
+                    if model.browserExtensionReloadRequired {
+                        model.markBrowserExtensionReloaded()
+                    } else {
+                        model.refreshBrowserConnectionState()
+                    }
+                }
                     .buttonStyle(CodexBridgeSecondaryButtonStyle(compact: true))
                 Button(model.isBrowserExtensionEnabled ? "完成" : "稍后完成") { dismiss() }
                     .buttonStyle(CodexBridgePrimaryButtonStyle(compact: true))
@@ -546,9 +566,11 @@ private struct BrowserConnectionSetupView: View {
                 .frame(width: 25, height: 25)
                 .background(CodexBridgePalette.chatGPT, in: Circle())
             VStack(alignment: .leading, spacing: 5) {
-                Text("打开浏览器扩展管理页")
+                Text(model.browserExtensionReloadRequired ? "打开扩展管理页" : "打开浏览器扩展管理页")
                     .font(.headline)
-                Text("选择你准备使用的浏览器，Codex Bridge 会打开对应的扩展管理页。")
+                Text(model.browserExtensionReloadRequired
+                    ? "选择安装了扩展的浏览器，然后在 Codex Bridge 扩展卡片中点击“重新加载”。"
+                    : "选择你准备使用的浏览器，Codex Bridge 会打开对应的扩展管理页。")
                     .font(.caption)
                     .foregroundStyle(CodexBridgePalette.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -576,11 +598,11 @@ private struct BrowserConnectionSetupView: View {
     @ViewBuilder
     private var connectionStatus: some View {
         HStack(spacing: 12) {
-            Image(systemName: model.isBrowserExtensionEnabled ? "checkmark.circle.fill" : "clock.badge.checkmark")
+            Image(systemName: model.browserExtensionReloadRequired ? "arrow.clockwise.circle.fill" : (model.isBrowserExtensionEnabled ? "checkmark.circle.fill" : "clock.badge.checkmark"))
                 .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(model.isBrowserExtensionEnabled ? CodexBridgePalette.success : CodexBridgePalette.accent)
+                .foregroundStyle(model.browserExtensionReloadRequired ? CodexBridgePalette.warning : (model.isBrowserExtensionEnabled ? CodexBridgePalette.success : CodexBridgePalette.accent))
             VStack(alignment: .leading, spacing: 3) {
-                Text(model.isBrowserExtensionEnabled ? "浏览器扩展已加载" : "扩展文件已准备好")
+                Text(model.browserExtensionReloadRequired ? "扩展更新等待重新加载" : (model.isBrowserExtensionEnabled ? "浏览器扩展已加载" : "扩展文件已准备好"))
                     .font(.headline)
                 Text(model.chatGPTWebState.label)
                     .font(.caption)
@@ -590,9 +612,16 @@ private struct BrowserConnectionSetupView: View {
         }
         .padding(15)
         .background(
-            (model.isBrowserExtensionEnabled ? CodexBridgePalette.success : CodexBridgePalette.accent).opacity(0.09),
+            (model.browserExtensionReloadRequired ? CodexBridgePalette.warning : (model.isBrowserExtensionEnabled ? CodexBridgePalette.success : CodexBridgePalette.accent)).opacity(0.09),
             in: RoundedRectangle(cornerRadius: CodexBridgeRadius.large)
         )
+    }
+
+    private var footerStatus: String {
+        if model.browserExtensionReloadRequired {
+            return "重新加载后，新版扩展会立即生效"
+        }
+        return model.isBrowserExtensionEnabled ? "扩展已经加载，可以开始使用" : "加载完成后，请重新检查连接"
     }
 
     private func setupStep(
@@ -711,6 +740,8 @@ private struct SettingsHeading: View {
 }
 
 private struct AboutSettingsPane: View {
+    @Bindable var model: AppModel
+
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
             SettingsHeading(
@@ -747,6 +778,8 @@ private struct AboutSettingsPane: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .codexBridgeSurface(radius: CodexBridgeRadius.large, elevated: true)
 
+            updateCard
+
             Label(
                 "Codex Bridge 只处理你选择的内容；发送和权限操作始终由你确认。",
                 systemImage: "lock.shield.fill"
@@ -757,6 +790,77 @@ private struct AboutSettingsPane: View {
             Spacer()
         }
         .padding(28)
+    }
+
+    private var updateCard: some View {
+        HStack(spacing: 13) {
+            Image(systemName: updateSymbol)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(updateColor)
+                .frame(width: 40, height: 40)
+                .background(updateColor.opacity(0.1), in: RoundedRectangle(cornerRadius: CodexBridgeRadius.medium))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(updateTitle)
+                    .font(.headline)
+                Text(updateDetail)
+                    .font(.caption)
+                    .foregroundStyle(CodexBridgePalette.secondaryText)
+            }
+
+            Spacer(minLength: 12)
+
+            switch model.appUpdateState {
+            case .checking:
+                ProgressView().controlSize(.small)
+            case .available:
+                Button("查看更新", action: model.openAvailableUpdate)
+                    .buttonStyle(CodexBridgePrimaryButtonStyle(compact: true))
+            default:
+                Button("检查更新") { Task { await model.checkForUpdates() } }
+                    .buttonStyle(CodexBridgeSecondaryButtonStyle(compact: true))
+            }
+        }
+        .padding(16)
+        .codexBridgeSurface()
+    }
+
+    private var updateTitle: String {
+        switch model.appUpdateState {
+        case .idle: "自动检查更新"
+        case .checking: "正在检查更新"
+        case .upToDate: "已是最新版本"
+        case let .available(release): "Codex Bridge \(release.version) 可用"
+        case .failed: "暂时无法检查更新"
+        }
+    }
+
+    private var updateDetail: String {
+        switch model.appUpdateState {
+        case .idle: "每天自动检查一次 GitHub Releases，也可以立即检查。"
+        case .checking: "正在连接 GitHub Releases。"
+        case .upToDate: "当前版本是 \(CodexBridgeRelease.displayVersion)。"
+        case let .available(release): release.title
+        case let .failed(message): message
+        }
+    }
+
+    private var updateSymbol: String {
+        switch model.appUpdateState {
+        case .available: "arrow.down.circle.fill"
+        case .upToDate: "checkmark.circle.fill"
+        case .failed: "exclamationmark.circle.fill"
+        default: "arrow.triangle.2.circlepath"
+        }
+    }
+
+    private var updateColor: Color {
+        switch model.appUpdateState {
+        case .available: CodexBridgePalette.accent
+        case .upToDate: CodexBridgePalette.success
+        case .failed: CodexBridgePalette.warning
+        default: CodexBridgePalette.secondaryText
+        }
     }
 }
 
