@@ -21,7 +21,7 @@ Codex Bridge 是一款原生 macOS App，用来查看和整理 ChatGPT、Codex �
 - 从 ChatGPT 新建 Codex 任务并填入草稿，可选择工作目录、模型与思考强度
 - 从 Codex 新建 ChatGPT 会话并填入草稿，可附带选中的文本文件
 - 支持 ChatGPT App，以及通过 Chrome 或 Microsoft Edge 扩展保存的 ChatGPT 网页对话
-- 自动同步 Codex 会话变化，并自动检查 GitHub Releases 中的新版本
+- 自动同步 Codex 会话变化，并可在 App 内检查、下载和安装 GitHub Releases 中的新版本
 - 所有交接均可预览；Codex Bridge 不会自动点击发送
 
 ## ChatGPT → Codex
@@ -58,7 +58,7 @@ Codex Bridge 是一款原生 macOS App，用来查看和整理 ChatGPT、Codex �
 每个 Release 同时提供 `.sha256` 文件。将 DMG 与校验文件放在同一目录后执行：
 
 ```bash
-shasum -a 256 -c Codex-Bridge-1.1.1-beta-universal.dmg.sha256
+shasum -a 256 -c Codex-Bridge-1.1.1-beta.2-universal.dmg.sha256
 ```
 
 输出包含 `OK` 表示文件与发布时生成的校验值一致。

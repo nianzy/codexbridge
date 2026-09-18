@@ -135,7 +135,7 @@ struct CodexArchiveSynchronizationTests {
 
 struct AppUpdateCheckerTests {
     @Test func appBundleIncludesTheFullReleaseVersion() {
-        #expect(AppReleaseMetadata.version(in: .main) == "1.1.1-beta.1")
+        #expect(AppReleaseMetadata.version(in: .main) == "1.1.1-beta.2")
     }
 
     @Test func selectsNewestPublishedReleaseAboveCurrentVersion() throws {
