@@ -64,9 +64,13 @@ private actor MemoryRepository: ConversationRepository {
     var drafts: [UUID: HandoffDraft] = [:]
     var operations: [String: ExecutionOperation] = [:]
     var links: [SourceTaskLink] = []
+    var conversationListCallCount = 0
 
     func prepare() async throws {}
-    func listConversations() async throws -> [CapturedConversation] { conversations }
+    func listConversations() async throws -> [CapturedConversation] {
+        conversationListCallCount += 1
+        return conversations
+    }
     func saveConversation(_ conversation: CapturedConversation) async throws { conversations.append(conversation) }
     func removeConversation(id: UUID) async throws { conversations.removeAll { $0.id == id } }
     func loadDraft(for sourceConversationID: UUID) async throws -> HandoffDraft? { drafts[sourceConversationID] }
@@ -107,6 +111,8 @@ struct CodexArchiveSynchronizationTests {
         let client = MutableThreadListClient()
         let model = AppModel(repository: repository, codexClient: client)
         await model.bootstrap()
+        let listCallsAfterBootstrap = await repository.conversationListCallCount
+        let probeCallsAfterBootstrap = await client.probeCount
 
         var newConversation = CapturedConversation.syntheticSamples()[1]
         newConversation.codexThreadID = "external-thread"
@@ -122,10 +128,16 @@ struct CodexArchiveSynchronizationTests {
 
         #expect(model.conversations.isEmpty)
         #expect(try await repository.listConversations().isEmpty)
+        #expect(await repository.conversationListCallCount == listCallsAfterBootstrap + 1)
+        #expect(await client.probeCount == probeCallsAfterBootstrap)
     }
 }
 
 struct AppUpdateCheckerTests {
+    @Test func appBundleIncludesTheFullReleaseVersion() {
+        #expect(AppReleaseMetadata.version(in: .main) == "1.1.1-beta.1")
+    }
+
     @Test func selectsNewestPublishedReleaseAboveCurrentVersion() throws {
         let data = Data(
             """
@@ -137,21 +149,167 @@ struct AppUpdateCheckerTests {
             """.utf8
         )
 
-        let release = try GitHubReleaseUpdateChecker.newerRelease(in: data, than: "1.1.1")
+        let release = try GitHubReleaseUpdateChecker.newerRelease(in: data, than: "1.1.1-beta.1")
 
-        #expect(release?.version == "1.2.0")
+        #expect(release?.version == "1.2.0-beta.1")
         #expect(release?.title == "Codex Bridge 1.2 Beta")
         #expect(release?.pageURL.absoluteString == "https://example.com/new")
     }
 
-    @Test func ignoresReleaseWithSameNumericVersion() throws {
+    @Test func ignoresTheSameBetaRelease() throws {
         let data = Data(
             """
             [{"tag_name":"v1.1.1-beta.1","name":"Same","html_url":"https://example.com/same","draft":false,"published_at":"2026-09-18T00:00:00Z"}]
             """.utf8
         )
 
-        #expect(try GitHubReleaseUpdateChecker.newerRelease(in: data, than: "1.1.1") == nil)
+        #expect(try GitHubReleaseUpdateChecker.newerRelease(in: data, than: "1.1.1-beta.1") == nil)
+    }
+
+    @Test func detectsNextBetaWithTheSameCoreVersion() throws {
+        let data = Data(
+            """
+            [{"tag_name":"v1.1.1-beta.2","name":"Next Beta","html_url":"https://example.com/beta-2","draft":false,"published_at":"2026-09-19T00:00:00Z"}]
+            """.utf8
+        )
+
+        #expect(try GitHubReleaseUpdateChecker.newerRelease(in: data, than: "1.1.1-beta.1")?.version == "1.1.1-beta.2")
+    }
+
+    @Test func detectsStableReleaseAfterBetaWithTheSameCoreVersion() throws {
+        let data = Data(
+            """
+            [{"tag_name":"v1.1.1","name":"Stable","html_url":"https://example.com/stable","draft":false,"published_at":"2026-09-19T00:00:00Z"}]
+            """.utf8
+        )
+
+        #expect(try GitHubReleaseUpdateChecker.newerRelease(in: data, than: "1.1.1-beta.1")?.version == "1.1.1")
+    }
+
+    @Test func selectsVerifiedUniversalDiskImageForInstallation() throws {
+        let digest = String(repeating: "a", count: 64)
+        let data = Data(
+            """
+            [{
+              "tag_name":"v1.2.0-beta.1",
+              "name":"Codex Bridge 1.2 Beta",
+              "html_url":"https://example.com/release",
+              "draft":false,
+              "prerelease":true,
+              "published_at":"2026-09-19T00:00:00Z",
+              "assets":[
+                {"name":"Codex-Bridge-1.2.0-arm64.dmg","browser_download_url":"https://github.com/lijingpeng/codexbridge/releases/download/v1.2.0-beta.1/arm64.dmg","size":20,"digest":"sha256:\(digest)"},
+                {"name":"Codex-Bridge-1.2.0-universal.dmg","browser_download_url":"https://github.com/lijingpeng/codexbridge/releases/download/v1.2.0-beta.1/universal.dmg","size":40,"digest":"sha256:\(digest)"}
+              ]
+            }]
+            """.utf8
+        )
+
+        let parsedRelease = try GitHubReleaseUpdateChecker.newerRelease(in: data, than: "1.1.1-beta.1")
+        let release = try #require(parsedRelease)
+
+        #expect(release.isPrerelease)
+        #expect(release.asset?.name == "Codex-Bridge-1.2.0-universal.dmg")
+        #expect(release.asset?.downloadURL.absoluteString == "https://github.com/lijingpeng/codexbridge/releases/download/v1.2.0-beta.1/universal.dmg")
+        #expect(release.asset?.sha256 == digest)
+        #expect(release.asset?.size == 40)
+    }
+
+    @Test func stableBuildIgnoresPrereleaseUpdates() throws {
+        let data = Data(
+            """
+            [
+              {"tag_name":"v2.0.0-beta.1","name":"Beta","html_url":"https://example.com/beta","draft":false,"prerelease":true,"published_at":"2026-09-20T00:00:00Z"},
+              {"tag_name":"v1.2.0","name":"Stable","html_url":"https://example.com/stable","draft":false,"prerelease":false,"published_at":"2026-09-19T00:00:00Z"}
+            ]
+            """.utf8
+        )
+
+        let release = try GitHubReleaseUpdateChecker.newerRelease(in: data, than: "1.1.1")
+
+        #expect(release?.version == "1.2.0")
+        #expect(release?.isPrerelease == false)
+    }
+
+    @Test func refusesAutomaticInstallationWithoutGitHubDigest() throws {
+        let data = Data(
+            """
+            [{
+              "tag_name":"v1.2.0-beta.1",
+              "name":"Missing digest",
+              "html_url":"https://example.com/release",
+              "draft":false,
+              "prerelease":true,
+              "published_at":"2026-09-19T00:00:00Z",
+              "assets":[{"name":"Codex-Bridge.dmg","browser_download_url":"https://example.com/update.dmg","size":20,"digest":null}]
+            }]
+            """.utf8
+        )
+
+        let parsedRelease = try GitHubReleaseUpdateChecker.newerRelease(in: data, than: "1.1.1-beta.1")
+        let release = try #require(parsedRelease)
+
+        #expect(release.asset == nil)
+    }
+
+    @Test func computesSHA256ForDownloadedUpdate() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("codexbridge-update-digest-\(UUID()).bin")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data("abc".utf8).write(to: url)
+
+        #expect(
+            try GitHubReleaseAppUpdateInstaller.sha256(of: url)
+                == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        )
+    }
+
+    @Test func onlyAcceptsRepositoryReleaseAssetURLs() {
+        #expect(
+            GitHubReleaseAppUpdateInstaller.isTrustedReleaseAssetURL(
+                URL(string: "https://github.com/lijingpeng/codexbridge/releases/download/v1.2.0/Codex-Bridge.dmg")!
+            )
+        )
+        #expect(
+            !GitHubReleaseAppUpdateInstaller.isTrustedReleaseAssetURL(
+                URL(string: "https://example.com/Codex-Bridge.dmg")!
+            )
+        )
+    }
+
+    @Test func installerHelperIsValidShellSyntax() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("codexbridge-updater-\(UUID()).sh")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try GitHubReleaseAppUpdateInstaller.installerScript.write(to: url, atomically: true, encoding: .utf8)
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-n", url.path]
+        try process.run()
+        process.waitUntilExit()
+
+        #expect(process.terminationStatus == 0)
+    }
+}
+
+struct DiagnosticsReportTests {
+    @Test func omitsAccountLabelsAndRawConnectionErrors() throws {
+        let secretEmail = "private@example.com"
+        let data = try DiagnosticsReportBuilder().data(
+            conversations: CapturedConversation.syntheticSamples(),
+            operations: [],
+            handoffLinkCount: 0,
+            chatGPTDraftCount: 0,
+            codexState: .connected("\(secretEmail) · codex 1.0"),
+            codexVersion: "codex 1.0",
+            appVersion: "1.1.1",
+            generatedAt: Date(timeIntervalSince1970: 0)
+        )
+        let text = try #require(String(data: data, encoding: .utf8))
+
+        #expect(text.contains("\"codexConnection\" : \"connected\""))
+        #expect(!text.contains(secretEmail))
     }
 }
 
@@ -164,12 +322,16 @@ private actor EmptyThreadListClient: CodexClient {
 
 private actor MutableThreadListClient: CodexClient {
     private var threads: [CapturedConversation] = []
+    private(set) var probeCount = 0
 
     func setThreads(_ threads: [CapturedConversation]) {
         self.threads = threads
     }
 
-    func probe() async throws -> CodexProbe { .init(accountLabel: "测试", version: "测试", models: []) }
+    func probe() async throws -> CodexProbe {
+        probeCount += 1
+        return .init(accountLabel: "测试", version: "测试", models: [])
+    }
     func listThreads(limit: Int) async throws -> [CapturedConversation] { Array(threads.prefix(limit)) }
     func createDraftThread(_ handoff: FrozenHandoff) async throws -> String { "unused" }
     func stop() async {}

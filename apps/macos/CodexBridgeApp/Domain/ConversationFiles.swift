@@ -47,11 +47,12 @@ struct ConversationFileDiscovery: Sendable {
     }
 }
 
-enum ConversationFileError: LocalizedError {
-    case unavailable, unsupported, tooLarge
+enum ConversationFileError: LocalizedError, Equatable {
+    case unavailable, missing, unsupported, tooLarge
     var errorDescription: String? {
         switch self {
         case .unavailable: "无法读取这个文件。请先下载文件，或选择本机副本。"
+        case .missing: "本机文件已被移动或删除。请重新选择文件。"
         case .unsupported: "此文件不支持作为文本附带。可在文件页预览，并在 ChatGPT 中手动添加原文件。"
         case .tooLarge: "文件超过 1 MB，请选取需要的内容后再转交。"
         }
@@ -59,8 +60,15 @@ enum ConversationFileError: LocalizedError {
 }
 
 struct ConversationFileReader: Sendable {
-    func attachment(_ file: ConversationFile) throws -> TransferAttachment {
+    func availableURL(_ file: ConversationFile) throws -> URL {
         guard let url = file.localURL else { throw ConversationFileError.unavailable }
+        let values = try? url.resourceValues(forKeys: [.isRegularFileKey])
+        guard values?.isRegularFile == true else { throw ConversationFileError.missing }
+        return url
+    }
+
+    func attachment(_ file: ConversationFile) throws -> TransferAttachment {
+        let url = try availableURL(file)
         let values = try url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
         guard values.isRegularFile == true else { throw ConversationFileError.unsupported }
         guard (values.fileSize ?? Int.max) <= 1_048_576 else { throw ConversationFileError.tooLarge }

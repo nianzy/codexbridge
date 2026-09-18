@@ -90,6 +90,7 @@ struct ConversationTransferTests {
         defer { try? FileManager.default.removeItem(at: url) }
         let file = ConversationFile(id: "f", name: "test.txt", turnID: "r", source: url.path, localPath: url.path)
         try Data("文本快照".utf8).write(to: url)
+        #expect(try ConversationFileReader().availableURL(file) == url)
         let snapshot = try ConversationFileReader().attachment(file)
         try Data("之后修改".utf8).write(to: url)
         #expect(snapshot.text == "文本快照")
@@ -97,6 +98,22 @@ struct ConversationTransferTests {
         #expect(throws: (any Error).self) { try ConversationFileReader().attachment(file) }
         try Data(repeating: 65, count: 1_048_577).write(to: url)
         #expect(throws: (any Error).self) { try ConversationFileReader().attachment(file) }
+    }
+
+    @Test func rejectsAFileThatWasMovedBeforePreview() {
+        let missingURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("codexbridge-missing-\(UUID()).txt")
+        let file = ConversationFile(
+            id: "missing",
+            name: "missing.txt",
+            turnID: "r",
+            source: missingURL.path,
+            localPath: missingURL.path
+        )
+
+        #expect(throws: ConversationFileError.missing) {
+            try ConversationFileReader().availableURL(file)
+        }
     }
 
     @Test func oldConversationDecodesWithoutFiles() throws {

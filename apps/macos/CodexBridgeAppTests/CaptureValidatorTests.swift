@@ -34,17 +34,37 @@ struct CaptureValidatorTests {
         #expect(first.contentHash == second.contentHash)
     }
 
+    @Test func updatedSelectionKeepsIdentityForTheSameChatGPTConversation() throws {
+        let validator = CaptureValidator()
+        let first = try validator.validate(makePayload(assistantText: "第一版"))
+        let second = try validator.validate(makePayload(assistantText: "第二版"))
+
+        #expect(first.id == second.id)
+        #expect(first.contentHash != second.contentHash)
+    }
+
+    @Test func identicalTextInDifferentChatGPTConversationsKeepsSeparateIdentity() throws {
+        let validator = CaptureValidator()
+        let first = try validator.validate(makePayload(conversationID: "conversation-a"))
+        let second = try validator.validate(makePayload(conversationID: "conversation-b"))
+
+        #expect(first.id != second.id)
+        #expect(first.contentHash == second.contentHash)
+    }
+
     private func makePayload(
         selectedIDs: [String] = ["turn-0"],
         attachmentCount: Int = 0,
-        complete: Bool = true
+        complete: Bool = true,
+        conversationID: String? = "test",
+        assistantText: String = "方案"
     ) -> CapturePayload {
         CapturePayload(
             schemaVersion: 1,
             source: .init(
                 kind: "chatgpt-web",
                 url: URL(string: "https://chatgpt.com/c/test")!,
-                conversationId: "test",
+                conversationId: conversationID,
                 title: "测试会话"
             ),
             capture: .init(
@@ -59,7 +79,7 @@ struct CaptureValidatorTests {
                     id: "turn-0",
                     index: 0,
                     user: .init(id: "user-0", idSource: "dom", text: "需求"),
-                    assistant: .init(id: "assistant-0", idSource: "dom", text: "方案"),
+                    assistant: .init(id: "assistant-0", idSource: "dom", text: assistantText),
                     complete: true
                 ),
             ],
@@ -174,9 +194,8 @@ struct CodexDraftTransportTests {
 }
 
 struct ChatGPTNewConversationActionTests {
-    @Test func chatGPTDraftLinkCreatesNewChatAndPreservesPrompt() throws {
-        let prompt = "第一行\n第二行：中文与 ? & ="
-        let url = try #require(ChatGPTDraftDeepLink.make(prompt: prompt))
+    @Test func chatGPTDraftLinkCreatesAnEmptyChatWithoutSensitiveContent() throws {
+        let url = try #require(ChatGPTDraftDeepLink.make())
         let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
         let values = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item in
             item.value.map { (item.name, $0) }
@@ -186,21 +205,19 @@ struct ChatGPTNewConversationActionTests {
         #expect(components.host == "threads")
         #expect(components.path == "/new")
         #expect(values["mode"] == "chat")
-        #expect(values["prompt"] == prompt)
+        #expect(values["prompt"] == nil)
         #expect(values["path"] == nil)
     }
 
     @Test func chatGPTLinkCanOpenAnEmptyNewConversation() throws {
-        let url = try #require(ChatGPTDraftDeepLink.make(prompt: nil))
+        let url = try #require(ChatGPTDraftDeepLink.make())
         let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
         #expect(components.queryItems == [URLQueryItem(name: "mode", value: "chat")])
     }
 
-    @Test func codexDraftLinkCreatesNewWorkTaskAndPreservesPrompt() throws {
-        let prompt = "第一行\n第二行：中文与 ? & ="
+    @Test func codexDraftLinkCreatesAnEmptyWorkTaskWithoutSensitiveContent() throws {
         let url = try #require(CodexDraftDeepLink.make(
-            workspacePath: "/Users/test/Project Folder",
-            prompt: prompt
+            workspacePath: "/Users/test/Project Folder"
         ))
         let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
         let values = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item in
@@ -212,7 +229,7 @@ struct ChatGPTNewConversationActionTests {
         #expect(components.path == "/new")
         #expect(values["mode"] == "work")
         #expect(values["path"] == "/Users/test/Project Folder")
-        #expect(values["prompt"] == prompt)
+        #expect(values["prompt"] == nil)
     }
 
     @Test func codexTaskLinkLocatesExistingTaskWithoutCreatingOrSubmitting() throws {

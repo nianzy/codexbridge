@@ -1,4 +1,5 @@
 import Foundation
+import SQLite3
 import Testing
 @testable import CodexBridge
 
@@ -80,6 +81,83 @@ struct SQLiteConversationRepositoryTests {
         try await repository.removeConversation(id: conversations[0].id)
 
         #expect(try await repository.listConversations().map(\.id) == [conversations[1].id])
+        await repository.close()
+    }
+
+    @Test func storesDifferentSessionsWithTheSameContentHash() async throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("codexbridge-tests", isDirectory: true)
+            .appendingPathComponent("\(UUID().uuidString).sqlite")
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let repository = SQLiteConversationRepository(databaseURL: url)
+        try await repository.prepare()
+
+        let sample = CapturedConversation.syntheticSamples()[0]
+        let other = CapturedConversation(
+            id: UUID(),
+            sourceKind: sample.sourceKind,
+            sourceURL: sample.sourceURL,
+            sourceConversationID: "another-session",
+            title: sample.title,
+            projectName: sample.projectName,
+            projectPath: sample.projectPath,
+            capturedAt: sample.capturedAt,
+            captureScope: sample.captureScope,
+            freshness: sample.freshness,
+            contentHash: sample.contentHash,
+            turns: sample.turns,
+            warnings: sample.warnings,
+            codexThreadID: sample.codexThreadID
+        )
+        try await repository.saveConversation(sample)
+        try await repository.saveConversation(other)
+
+        #expect(try await repository.listConversations().count == 2)
+        await repository.close()
+    }
+
+    @Test func migratesVersion2DatabaseAwayFromUniqueContentHashes() async throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("codexbridge-tests", isDirectory: true)
+            .appendingPathComponent("\(UUID().uuidString).sqlite")
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        var database: OpaquePointer?
+        #expect(sqlite3_open(url.path, &database) == SQLITE_OK)
+        guard let database else { return }
+        let schema = """
+            CREATE TABLE conversations (
+                id TEXT PRIMARY KEY NOT NULL,
+                source_kind TEXT NOT NULL,
+                source_id TEXT,
+                title TEXT NOT NULL,
+                project_name TEXT,
+                captured_at REAL NOT NULL,
+                content_hash TEXT NOT NULL UNIQUE,
+                payload BLOB NOT NULL
+            );
+            PRAGMA user_version = 2;
+            """
+        #expect(sqlite3_exec(database, schema, nil, nil, nil) == SQLITE_OK)
+        sqlite3_close(database)
+
+        let repository = SQLiteConversationRepository(databaseURL: url)
+        try await repository.prepare()
+        let sample = CapturedConversation.syntheticSamples()[0]
+        let other = CapturedConversation(
+            id: UUID(), sourceKind: sample.sourceKind, sourceURL: sample.sourceURL,
+            sourceConversationID: "separate-session", title: sample.title,
+            projectName: sample.projectName, projectPath: sample.projectPath,
+            capturedAt: sample.capturedAt, captureScope: sample.captureScope,
+            freshness: sample.freshness, contentHash: sample.contentHash,
+            turns: sample.turns, warnings: sample.warnings, codexThreadID: nil
+        )
+        try await repository.saveConversation(sample)
+        try await repository.saveConversation(other)
+
+        #expect(try await repository.listConversations().count == 2)
         await repository.close()
     }
 }

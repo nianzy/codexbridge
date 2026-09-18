@@ -100,6 +100,28 @@ actor CodexAppServerClient: CodexClient {
         return result.filter { ids.insert($0.id).inserted }
     }
 
+    func recentThreadSnapshot(limit: Int) async throws -> CodexThreadSnapshot {
+        try await startIfNeeded()
+        let pageLimit = max(1, min(limit, 100))
+        let response = try await request(
+            method: "thread/list",
+            params: .object([
+                "limit": .number(Double(pageLimit)),
+                "sortKey": .string("updated_at"),
+                "sortDirection": .string("desc"),
+                "useStateDbOnly": .bool(true),
+                "archived": .bool(false),
+            ])
+        )
+        var ids: Set<UUID> = []
+        let threads = (response["data"]?.arrayValue?.compactMap { parseThread($0) } ?? [])
+            .filter { ids.insert($0.id).inserted }
+        return CodexThreadSnapshot(
+            threads: threads,
+            isComplete: response["nextCursor"]?.stringValue == nil
+        )
+    }
+
     func readThread(id: String) async throws -> CapturedConversation {
         try await startIfNeeded()
         let response = try await request(

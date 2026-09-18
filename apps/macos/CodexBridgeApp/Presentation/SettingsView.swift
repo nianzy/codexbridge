@@ -813,9 +813,25 @@ private struct AboutSettingsPane: View {
             switch model.appUpdateState {
             case .checking:
                 ProgressView().controlSize(.small)
-            case .available:
-                Button("查看更新", action: model.openAvailableUpdate)
-                    .buttonStyle(CodexBridgePrimaryButtonStyle(compact: true))
+            case let .available(release):
+                if release.asset != nil {
+                    Button("发布说明", action: model.openAvailableUpdate)
+                        .buttonStyle(CodexBridgeSecondaryButtonStyle(compact: true))
+                    Button("下载并安装") { Task { await model.installAvailableUpdate() } }
+                        .buttonStyle(CodexBridgePrimaryButtonStyle(compact: true))
+                } else {
+                    Button("查看更新", action: model.openAvailableUpdate)
+                        .buttonStyle(CodexBridgePrimaryButtonStyle(compact: true))
+                }
+            case .downloading, .installing:
+                ProgressView().controlSize(.small)
+            case let .failed(_, release?):
+                Button("发布页面", action: model.openAvailableUpdate)
+                    .buttonStyle(CodexBridgeSecondaryButtonStyle(compact: true))
+                if release.asset != nil {
+                    Button("重试安装") { Task { await model.installAvailableUpdate() } }
+                        .buttonStyle(CodexBridgePrimaryButtonStyle(compact: true))
+                }
             default:
                 Button("检查更新") { Task { await model.checkForUpdates() } }
                     .buttonStyle(CodexBridgeSecondaryButtonStyle(compact: true))
@@ -831,7 +847,9 @@ private struct AboutSettingsPane: View {
         case .checking: "正在检查更新"
         case .upToDate: "已是最新版本"
         case let .available(release): "Codex Bridge \(release.version) 可用"
-        case .failed: "暂时无法检查更新"
+        case let .downloading(release): "正在下载 Codex Bridge \(release.version)"
+        case let .installing(release): "正在安装 Codex Bridge \(release.version)"
+        case .failed: "更新未完成"
         }
     }
 
@@ -840,14 +858,17 @@ private struct AboutSettingsPane: View {
         case .idle: "每天自动检查一次 GitHub Releases，也可以立即检查。"
         case .checking: "正在连接 GitHub Releases。"
         case .upToDate: "当前版本是 \(CodexBridgeRelease.displayVersion)。"
-        case let .available(release): release.title
-        case let .failed(message): message
+        case let .available(release):
+            release.asset == nil ? release.title : "\(release.title)；安装前会校验文件摘要、版本和代码签名。"
+        case .downloading: "正在从 GitHub Releases 下载并校验更新文件。"
+        case .installing: "验证完成，Codex Bridge 即将退出、完成替换并重新打开。"
+        case let .failed(message, _): message
         }
     }
 
     private var updateSymbol: String {
         switch model.appUpdateState {
-        case .available: "arrow.down.circle.fill"
+        case .available, .downloading, .installing: "arrow.down.circle.fill"
         case .upToDate: "checkmark.circle.fill"
         case .failed: "exclamationmark.circle.fill"
         default: "arrow.triangle.2.circlepath"
@@ -856,7 +877,7 @@ private struct AboutSettingsPane: View {
 
     private var updateColor: Color {
         switch model.appUpdateState {
-        case .available: CodexBridgePalette.accent
+        case .available, .downloading, .installing: CodexBridgePalette.accent
         case .upToDate: CodexBridgePalette.success
         case .failed: CodexBridgePalette.warning
         default: CodexBridgePalette.secondaryText

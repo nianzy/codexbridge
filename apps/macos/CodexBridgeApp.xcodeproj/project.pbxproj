@@ -25,6 +25,13 @@
 		B00000000000000000000011 /* CodexBridgeDesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000016 /* CodexBridgeDesignSystem.swift */; };
 		B00000000000000000000012 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000018 /* Assets.xcassets */; };
 		B00000000000000000000013 /* AppUpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000019 /* AppUpdateChecker.swift */; };
+		B00000000000000000000014 /* DiagnosticsReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0000000000000000000001A /* DiagnosticsReport.swift */; };
+		B00000000000000000000015 /* NativeCaptureInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0000000000000000000001B /* NativeCaptureInbox.swift */; };
+		B00000000000000000000016 /* ChatGPTAppBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0000000000000000000001C /* ChatGPTAppBridge.swift */; };
+		B00000000000000000000017 /* RootViewComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0000000000000000000001D /* RootViewComponents.swift */; };
+		B00000000000000000000018 /* ConversationWorkspaceComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0000000000000000000001E /* ConversationWorkspaceComponents.swift */; };
+		B00000000000000000000019 /* AppUpdateInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0000000000000000000001F /* AppUpdateInstaller.swift */; };
+		B0000000000000000000001A /* release-version.txt in Resources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000020 /* release-version.txt */; };
 		B00000000000000000000100 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = F00000000000000000000100 /* libsqlite3.tbd */; };
 		B00000000000000000000201 /* CodexBridgeModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000001 /* CodexBridgeModels.swift */; };
 		B00000000000000000000202 /* CaptureValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000002 /* CaptureValidator.swift */; };
@@ -99,6 +106,13 @@
 		F00000000000000000000016 /* CodexBridgeDesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexBridgeDesignSystem.swift; sourceTree = "<group>"; };
 		F00000000000000000000018 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Resources/Assets.xcassets; sourceTree = "<group>"; };
 		F00000000000000000000019 /* AppUpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdateChecker.swift; sourceTree = "<group>"; };
+		F0000000000000000000001A /* DiagnosticsReport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsReport.swift; sourceTree = "<group>"; };
+		F0000000000000000000001B /* NativeCaptureInbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCaptureInbox.swift; sourceTree = "<group>"; };
+		F0000000000000000000001C /* ChatGPTAppBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGPTAppBridge.swift; sourceTree = "<group>"; };
+		F0000000000000000000001D /* RootViewComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootViewComponents.swift; sourceTree = "<group>"; };
+		F0000000000000000000001E /* ConversationWorkspaceComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationWorkspaceComponents.swift; sourceTree = "<group>"; };
+		F0000000000000000000001F /* AppUpdateInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdateInstaller.swift; sourceTree = "<group>"; };
+		F00000000000000000000020 /* release-version.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = Resources/release-version.txt; sourceTree = "<group>"; };
 		F00000000000000000000100 /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.text-based-dylib-definition; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
 		F00000000000000000000200 /* Codex Bridge.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Codex Bridge.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		F00000000000000000000201 /* CodexBridgeNativeHost */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = CodexBridgeNativeHost; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -129,14 +143,14 @@
 		};
 		G00000000000000000000002 /* CodexBridgeApp */ = {
 			isa = PBXGroup;
-			children = (G00000000000000000000003 /* Domain */, G00000000000000000000004 /* Application */, G00000000000000000000005 /* Infrastructure */, G00000000000000000000006 /* Presentation */, F00000000000000000000018 /* Assets.xcassets */);
+			children = (G00000000000000000000003 /* Domain */, G00000000000000000000004 /* Application */, G00000000000000000000005 /* Infrastructure */, G00000000000000000000006 /* Presentation */, F00000000000000000000018 /* Assets.xcassets */, F00000000000000000000020 /* release-version.txt */);
 			path = CodexBridgeApp;
 			sourceTree = "<group>";
 		};
 		G00000000000000000000003 /* Domain */ = {isa = PBXGroup; children = (F00000000000000000000500, F00000000000000000000001, F00000000000000000000002, F00000000000000000000003,); path = Domain; sourceTree = "<group>"; };
-		G00000000000000000000004 /* Application */ = {isa = PBXGroup; children = (F00000000000000000000004, F00000000000000000000005, F00000000000000000000006, F00000000000000000000019,); path = Application; sourceTree = "<group>"; };
-		G00000000000000000000005 /* Infrastructure */ = {isa = PBXGroup; children = (F00000000000000000000502, F00000000000000000000007, F00000000000000000000008, F00000000000000000000009, F0000000000000000000000A, F00000000000000000000013,); path = Infrastructure; sourceTree = "<group>"; };
-		G00000000000000000000006 /* Presentation */ = {isa = PBXGroup; children = (F00000000000000000000501, F0000000000000000000000B, F00000000000000000000016, F0000000000000000000000C, F0000000000000000000000D, F0000000000000000000000E,); path = Presentation; sourceTree = "<group>"; };
+		G00000000000000000000004 /* Application */ = {isa = PBXGroup; children = (F00000000000000000000004, F00000000000000000000005, F00000000000000000000006, F00000000000000000000019, F0000000000000000000001F, F0000000000000000000001A,); path = Application; sourceTree = "<group>"; };
+		G00000000000000000000005 /* Infrastructure */ = {isa = PBXGroup; children = (F00000000000000000000502, F00000000000000000000007, F00000000000000000000008, F00000000000000000000009, F0000000000000000000000A, F00000000000000000000013, F0000000000000000000001B, F0000000000000000000001C,); path = Infrastructure; sourceTree = "<group>"; };
+		G00000000000000000000006 /* Presentation */ = {isa = PBXGroup; children = (F00000000000000000000501, F0000000000000000000001E, F0000000000000000000000B, F00000000000000000000016, F0000000000000000000000C, F0000000000000000000001D, F0000000000000000000000D, F0000000000000000000000E,); path = Presentation; sourceTree = "<group>"; };
 		G00000000000000000000007 /* CodexBridgeNativeHost */ = {isa = PBXGroup; children = (F0000000000000000000000F,); path = CodexBridgeNativeHost; sourceTree = "<group>"; };
 		G00000000000000000000008 /* CodexBridgeAppTests */ = {isa = PBXGroup; children = (F00000000000000000000010, F00000000000000000000011, F00000000000000000000012, F00000000000000000000015,); path = CodexBridgeAppTests; sourceTree = "<group>"; };
 		G00000000000000000000009 /* Frameworks */ = {isa = PBXGroup; children = (F00000000000000000000100,); name = Frameworks; sourceTree = "<group>"; };
@@ -206,7 +220,7 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		D00000000000000000000006 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (B00000000000000000000010 /* extension in Resources */, B00000000000000000000012 /* Assets.xcassets in Resources */,); runOnlyForDeploymentPostprocessing = 0; };
+		D00000000000000000000006 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (B00000000000000000000010 /* extension in Resources */, B00000000000000000000012 /* Assets.xcassets in Resources */, B0000000000000000000001A /* release-version.txt in Resources */,); runOnlyForDeploymentPostprocessing = 0; };
 		D00000000000000000000009 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXResourcesBuildPhase section */
 
@@ -214,7 +228,7 @@
 		D00000000000000000000005 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
-			files = (B00000000000000000000502, B00000000000000000000501, B00000000000000000000500, B00000000000000000000001, B00000000000000000000002, B00000000000000000000003, B00000000000000000000004, B00000000000000000000005, B00000000000000000000006, B00000000000000000000013, B00000000000000000000007, B00000000000000000000008, B00000000000000000000009, B0000000000000000000000A, B0000000000000000000000F, B0000000000000000000000B, B00000000000000000000011, B0000000000000000000000C, B0000000000000000000000D, B0000000000000000000000E,);
+			files = (B00000000000000000000502, B00000000000000000000501, B00000000000000000000018, B00000000000000000000500, B00000000000000000000001, B00000000000000000000002, B00000000000000000000003, B00000000000000000000004, B00000000000000000000005, B00000000000000000000006, B00000000000000000000013, B00000000000000000000019, B00000000000000000000014, B00000000000000000000015, B00000000000000000000016, B00000000000000000000007, B00000000000000000000008, B00000000000000000000009, B0000000000000000000000A, B0000000000000000000000F, B0000000000000000000000B, B00000000000000000000011, B0000000000000000000000C, B00000000000000000000017, B0000000000000000000000D, B0000000000000000000000E,);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		D00000000000000000000007 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B00000000000000000001500, B00000000000000000000201, B00000000000000000000202, B00000000000000000000207, B00000000000000000000203, B00000000000000000000204, B00000000000000000000205,); runOnlyForDeploymentPostprocessing = 0; };

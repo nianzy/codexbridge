@@ -2,15 +2,16 @@ import AppKit
 import SwiftUI
 
 enum CodexBridgeRelease {
-    static let channel = "Beta"
-
     static var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
     }
 
-    static var displayVersion: String {
-        "\(version) \(channel)"
+    static var updateVersion: String {
+        AppReleaseMetadata.version(in: .main) ?? version
     }
+
+    static var channel: String { NumericVersion(updateVersion)?.isPrerelease == true ? "Beta" : "Release" }
+    static var displayVersion: String { updateVersion }
 }
 
 @main

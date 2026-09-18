@@ -89,11 +89,17 @@ struct CaptureValidator: Sendable {
             warnings.append("部分较早的消息可能未包含。请在 ChatGPT 中向上滚动后重新保存。")
         }
 
+        let sourceConversationID = payload.source.conversationId?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty
+        let identitySeed = sourceConversationID.map { "chatgpt-web-\($0)" }
+            ?? "chatgpt-web-content-\(hash)"
+
         return CapturedConversation(
-            id: CapturedConversation.stableID(for: "chatgpt-web-\(hash)"),
+            id: CapturedConversation.stableID(for: identitySeed),
             sourceKind: .chatGPTWeb,
             sourceURL: payload.source.url,
-            sourceConversationID: payload.source.conversationId,
+            sourceConversationID: sourceConversationID,
             title: payload.source.title,
             projectName: nil,
             projectPath: nil,
@@ -106,4 +112,8 @@ struct CaptureValidator: Sendable {
             codexThreadID: nil
         )
     }
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
 }

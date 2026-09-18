@@ -21,6 +21,7 @@ protocol ConversationRepository: Sendable {
 protocol CodexClient: Sendable {
     func probe() async throws -> CodexProbe
     func listThreads(limit: Int) async throws -> [CapturedConversation]
+    func recentThreadSnapshot(limit: Int) async throws -> CodexThreadSnapshot
     func createDraftThread(_ handoff: FrozenHandoff) async throws -> String
     func readThread(id: String) async throws -> CapturedConversation
     func continueThread(id: String, prompt: String, modelID: String?, reasoningEffort: String?) async throws -> CodexSubmission
@@ -37,6 +38,11 @@ private struct UnsupportedCodexClientCapability: LocalizedError {
 }
 
 extension CodexClient {
+    func recentThreadSnapshot(limit: Int) async throws -> CodexThreadSnapshot {
+        let threads = try await listThreads(limit: limit)
+        return CodexThreadSnapshot(threads: threads, isComplete: threads.count < limit)
+    }
+
     func readThread(id: String) async throws -> CapturedConversation {
         throw UnsupportedCodexClientCapability(message: "当前 Codex 客户端不支持读取任务")
     }
@@ -60,6 +66,11 @@ extension CodexClient {
     func respond(to requestID: String, accepted: Bool, answers: [String: [String]]) async throws {
         throw UnsupportedCodexClientCapability(message: "当前 Codex 客户端不支持交互响应")
     }
+}
+
+struct CodexThreadSnapshot: Sendable {
+    let threads: [CapturedConversation]
+    let isComplete: Bool
 }
 
 struct CodexProbe: Sendable {

@@ -117,6 +117,10 @@ actor SQLiteConversationRepository: ConversationRepository {
         try execute("PRAGMA foreign_keys = ON")
         try execute("PRAGMA journal_mode = WAL")
         try execute("PRAGMA busy_timeout = 3000")
+        let schemaVersion = try userVersion()
+        if schemaVersion > 0, schemaVersion < 3 {
+            try migrateConversationsToVersion3()
+        }
         try execute("""
             CREATE TABLE IF NOT EXISTS conversations (
                 id TEXT PRIMARY KEY NOT NULL,
@@ -125,7 +129,7 @@ actor SQLiteConversationRepository: ConversationRepository {
                 title TEXT NOT NULL,
                 project_name TEXT,
                 captured_at REAL NOT NULL,
-                content_hash TEXT NOT NULL UNIQUE,
+                content_hash TEXT NOT NULL,
                 payload BLOB NOT NULL
             )
             """)
@@ -159,7 +163,6 @@ actor SQLiteConversationRepository: ConversationRepository {
                 payload BLOB NOT NULL
             )
             """)
-        try execute("PRAGMA user_version = 1")
         try execute("""
             CREATE TABLE IF NOT EXISTS chatgpt_drafts (
                 id TEXT PRIMARY KEY NOT NULL,
@@ -168,7 +171,7 @@ actor SQLiteConversationRepository: ConversationRepository {
                 payload BLOB NOT NULL
             )
             """)
-        try execute("PRAGMA user_version = 2")
+        try execute("PRAGMA user_version = 3")
     }
 
     func close() {
@@ -193,7 +196,9 @@ actor SQLiteConversationRepository: ConversationRepository {
                 INSERT INTO conversations
                 (id, source_kind, source_id, title, project_name, captured_at, content_hash, payload)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT DO UPDATE SET
+                ON CONFLICT(id) DO UPDATE SET
+                    source_kind = excluded.source_kind,
+                    source_id = excluded.source_id,
                     content_hash = excluded.content_hash,
                     title = excluded.title,
                     project_name = excluded.project_name,
@@ -381,6 +386,50 @@ actor SQLiteConversationRepository: ConversationRepository {
 
     private func ensurePrepared() throws {
         guard database != nil else { throw CodexBridgeDatabaseError.open("数据库尚未初始化") }
+    }
+
+    private func userVersion() throws -> Int {
+        guard let database else { throw CodexBridgeDatabaseError.open("数据库尚未初始化") }
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(database, "PRAGMA user_version", -1, &statement, nil) == SQLITE_OK,
+              let statement else {
+            throw CodexBridgeDatabaseError.prepare(String(cString: sqlite3_errmsg(database)))
+        }
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_step(statement) == SQLITE_ROW else {
+            throw CodexBridgeDatabaseError.execute(String(cString: sqlite3_errmsg(database)))
+        }
+        return Int(sqlite3_column_int(statement, 0))
+    }
+
+    private func migrateConversationsToVersion3() throws {
+        do {
+            try execute("BEGIN IMMEDIATE")
+            try execute("ALTER TABLE conversations RENAME TO conversations_version_2")
+            try execute("""
+                CREATE TABLE conversations (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    source_kind TEXT NOT NULL,
+                    source_id TEXT,
+                    title TEXT NOT NULL,
+                    project_name TEXT,
+                    captured_at REAL NOT NULL,
+                    content_hash TEXT NOT NULL,
+                    payload BLOB NOT NULL
+                )
+                """)
+            try execute("""
+                INSERT INTO conversations
+                    (id, source_kind, source_id, title, project_name, captured_at, content_hash, payload)
+                SELECT id, source_kind, source_id, title, project_name, captured_at, content_hash, payload
+                FROM conversations_version_2
+                """)
+            try execute("DROP TABLE conversations_version_2")
+            try execute("COMMIT")
+        } catch {
+            try? execute("ROLLBACK")
+            throw CodexBridgeDatabaseError.migrate(error.localizedDescription)
+        }
     }
 
     private func execute(_ sql: String) throws {

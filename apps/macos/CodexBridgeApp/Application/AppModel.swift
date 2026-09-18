@@ -6,7 +6,7 @@ import Observation
 @MainActor
 @Observable
 final class AppModel {
-    var conversations: [CapturedConversation] = [] { didSet { fileCache.removeAll() } }
+    var conversations: [CapturedConversation] = []
     var operations: [ExecutionOperation] = []
     var links: [SourceTaskLink] = []
     var chatGPTDrafts: [ChatGPTDraft] = []
@@ -40,6 +40,7 @@ final class AppModel {
     var errorMessage: String?
     var models: [CodexModelOption] = []
     var codexState: SourceConnectionState = .checking
+    var codexVersion: String?
     var chatGPTWebState: SourceConnectionState = .ready("尚未设置浏览器扩展")
     var chatGPTAppState: SourceConnectionState = .ready("需要授权")
     var browserExtensionInstallation: BrowserExtensionInstallation = .missing
@@ -63,6 +64,7 @@ final class AppModel {
     @ObservationIgnored private let captureValidator = CaptureValidator()
     @ObservationIgnored private let nativeMessagingInstaller = NativeMessagingInstaller()
     @ObservationIgnored private let appUpdateChecker: any AppUpdateChecking
+    @ObservationIgnored private let appUpdateInstaller: any AppUpdateInstalling
     @ObservationIgnored private let chatGPTAppCaptureService = ChatGPTAppCaptureService()
     @ObservationIgnored private var statusDismissTask: Task<Void, Never>?
     @ObservationIgnored private var detailTasks: [String: Task<CapturedConversation, Error>] = [:]
@@ -78,11 +80,13 @@ final class AppModel {
     init(
         repository: any ConversationRepository,
         codexClient: any CodexClient,
-        appUpdateChecker: any AppUpdateChecking = GitHubReleaseUpdateChecker()
+        appUpdateChecker: any AppUpdateChecking = GitHubReleaseUpdateChecker(),
+        appUpdateInstaller: any AppUpdateInstalling = GitHubReleaseAppUpdateInstaller()
     ) {
         self.repository = repository
         self.codexClient = codexClient
         self.appUpdateChecker = appUpdateChecker
+        self.appUpdateInstaller = appUpdateInstaller
         self.orchestrator = ExecutionOrchestrator(repository: repository, codexClient: codexClient)
     }
 
@@ -143,6 +147,7 @@ final class AppModel {
             try await repository.prepare()
             try await drainCaptureInbox()
             conversations = try await repository.listConversations()
+            fileCache.removeAll()
             operations = try await repository.listOperations()
             links = try await repository.listLinks()
             chatGPTDrafts = try await repository.listChatGPTDrafts()
@@ -163,6 +168,7 @@ final class AppModel {
         do {
             try await drainCaptureInbox()
             conversations = try await repository.listConversations()
+            fileCache.removeAll()
             refreshCapturedSourceStates()
             if selectedConversationID == nil { selectedConversationID = conversations.first?.id }
         } catch {
@@ -181,9 +187,10 @@ final class AppModel {
         if showConfirmation { showStatus("会话已刷新") }
     }
 
-    func refreshAutomaticallyIfReady() async {
+    func refreshAutomaticallyIfReady(reconcileArchives: Bool = false) async {
         guard hasCompletedBootstrap else { return }
-        await refreshAllConversations(showConfirmation: false)
+        await synchronizeCodexThreads(reconcileArchives: reconcileArchives)
+        refreshBrowserConnectionState()
     }
 
     func refreshCodexConnection(indicateProgress: Bool = true) async {
@@ -194,23 +201,35 @@ final class AppModel {
         do {
             let probe = try await codexClient.probe()
             models = probe.models
+            codexVersion = probe.version
             codexState = .connected("\(probe.accountLabel) · \(probe.version)")
-            await synchronizeCodexThreads()
+            await synchronizeCodexThreads(reconcileArchives: true)
         } catch {
             codexState = .unavailable(error.localizedDescription)
         }
     }
 
-    private func synchronizeCodexThreads() async {
+    private func synchronizeCodexThreads(reconcileArchives: Bool = false) async {
         do {
-            let summaries = try await codexClient.listThreads(limit: 100)
-            let activeThreadIDs = Set(summaries.compactMap(\.codexThreadID))
-            let missingCodexConversations = conversations.filter { conversation in
-                conversation.sourceKind == .codex
-                    && conversation.codexThreadID.map { !activeThreadIDs.contains($0) } == true
+            let summaries: [CapturedConversation]
+            let hasCompleteActiveThreadList: Bool
+            if reconcileArchives {
+                summaries = try await codexClient.listThreads(limit: 100)
+                hasCompleteActiveThreadList = true
+            } else {
+                let snapshot = try await codexClient.recentThreadSnapshot(limit: 100)
+                summaries = snapshot.threads
+                hasCompleteActiveThreadList = snapshot.isComplete
             }
-            for conversation in missingCodexConversations {
-                try await removeCodexConversation(conversation)
+            if hasCompleteActiveThreadList {
+                let activeThreadIDs = Set(summaries.compactMap(\.codexThreadID))
+                let missingCodexConversations = conversations.filter { conversation in
+                    conversation.sourceKind == .codex
+                        && conversation.codexThreadID.map { !activeThreadIDs.contains($0) } == true
+                }
+                for conversation in missingCodexConversations {
+                    try await removeCodexConversation(conversation)
+                }
             }
 
             var changed: [CapturedConversation] = []
@@ -552,6 +571,7 @@ final class AppModel {
             }.value
             try await repository.saveConversation(conversation)
             conversations = try await repository.listConversations()
+            fileCache.removeAll()
             refreshCapturedSourceStates()
             selectedConversationID = conversation.id
             showStatus("ChatGPT 对话已导入")
@@ -589,6 +609,7 @@ final class AppModel {
         do {
             try await repository.saveConversation(conversation)
             conversations = try await repository.listConversations()
+            fileCache.removeAll()
             refreshCapturedSourceStates()
             selectedConversationID = conversation.id
             isManualCapturePresented = false
@@ -610,6 +631,7 @@ final class AppModel {
             )
             try await repository.saveConversation(conversation)
             conversations = try await repository.listConversations()
+            fileCache.removeAll()
             selectedConversationID = conversation.id
             chatGPTAppState = .connected("已保存打开的对话")
             showStatus("ChatGPT 对话已保存")
@@ -625,21 +647,16 @@ final class AppModel {
         panel.nameFieldStringValue = "Codex Bridge 诊断信息.json"
         panel.allowedContentTypes = [.json]
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        let sourceCounts = Dictionary(grouping: conversations, by: { $0.sourceKind.rawValue }).mapValues(\.count)
-        let operationCounts = Dictionary(grouping: operations, by: { $0.state.rawValue }).mapValues(\.count)
-        let payload: [String: Any] = [
-            "schemaVersion": 1,
-            "generatedAt": ISO8601DateFormatter().string(from: .now),
-            "appVersion": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown",
-            "conversationCounts": sourceCounts,
-            "operationCounts": operationCounts,
-            "handoffLinkCount": links.count,
-            "chatGPTDraftCount": chatGPTDrafts.count,
-            "codexConnection": codexState.label,
-            "privacy": "不包含对话内容、文件路径、网页地址或真实任务标识",
-        ]
         do {
-            let data = try JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys])
+            let data = try DiagnosticsReportBuilder().data(
+                conversations: conversations,
+                operations: operations,
+                handoffLinkCount: links.count,
+                chatGPTDraftCount: chatGPTDrafts.count,
+                codexState: codexState,
+                codexVersion: codexVersion,
+                appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
+            )
             try data.write(to: url, options: .atomic)
             showStatus("诊断信息已导出")
         } catch {
@@ -651,6 +668,7 @@ final class AppModel {
         do {
             try await repository.clearLocalData()
             conversations = []
+            fileCache.removeAll()
             operations = []
             links = []
             chatGPTDrafts = []
@@ -732,8 +750,31 @@ final class AppModel {
     }
 
     func openAvailableUpdate() {
-        guard case let .available(release) = appUpdateState else { return }
+        guard let release = currentAvailableRelease else { return }
         NSWorkspace.shared.open(release.pageURL)
+    }
+
+    func installAvailableUpdate() async {
+        guard !isUpdateBusy, let release = currentAvailableRelease else { return }
+        guard release.asset != nil else {
+            appUpdateState = .failed(AppUpdateInstallError.missingAsset.localizedDescription, release)
+            return
+        }
+        appUpdateState = .downloading(release)
+        do {
+            let prepared = try await appUpdateInstaller.prepare(release)
+            appUpdateState = .installing(release)
+            try appUpdateInstaller.launchInstallation(
+                prepared,
+                replacing: Bundle.main.bundleURL,
+                currentProcessID: ProcessInfo.processInfo.processIdentifier
+            )
+            NSApplication.shared.terminate(nil)
+        } catch {
+            let message = (error as? AppUpdateInstallError)?.localizedDescription
+                ?? "更新未完成，请稍后重试或打开发布页面手动安装。"
+            appUpdateState = .failed(message, release)
+        }
     }
 
     var isBrowserExtensionEnabled: Bool {
@@ -810,10 +851,10 @@ final class AppModel {
     private static let browserExtensionReloadVersionKey = "codexbridge.browser-extension-reload-version"
 
     private func checkForUpdates(showFailure: Bool) async {
-        guard appUpdateState != .checking else { return }
+        guard !isUpdateBusy else { return }
         appUpdateState = .checking
         do {
-            let release = try await appUpdateChecker.latestRelease(newerThan: CodexBridgeRelease.version)
+            let release = try await appUpdateChecker.latestRelease(newerThan: CodexBridgeRelease.updateVersion)
             UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.lastUpdateCheckKey)
             if let release {
                 appUpdateState = .available(release)
@@ -824,8 +865,23 @@ final class AppModel {
             }
         } catch {
             appUpdateState = showFailure
-                ? .failed(error.localizedDescription)
+                ? .failed(error.localizedDescription, nil)
                 : .idle
+        }
+    }
+
+    private var currentAvailableRelease: AppRelease? {
+        switch appUpdateState {
+        case let .available(release), let .downloading(release), let .installing(release): release
+        case let .failed(_, release): release
+        default: nil
+        }
+    }
+
+    private var isUpdateBusy: Bool {
+        switch appUpdateState {
+        case .checking, .downloading, .installing: true
+        default: false
         }
     }
 
@@ -934,6 +990,7 @@ final class AppModel {
         conversationDetailErrors.removeValue(forKey: conversation.id)
         try await repository.removeConversation(id: conversation.id)
         conversations.removeAll { $0.id == conversation.id }
+        fileCache.removeValue(forKey: conversation.id)
         if selectedConversationID == conversation.id {
             selectedConversationID = conversations.first?.id
         }
@@ -958,11 +1015,12 @@ final class AppModel {
 
     private func replaceConversation(_ conversation: CapturedConversation) {
         if selectedConversationID == conversation.id { selectedTurnIDs.formIntersection(conversation.turns.map(\.id)) }
-        if let index = conversations.firstIndex(where: { $0.id == conversation.id || $0.contentHash == conversation.contentHash }) {
+        if let index = conversations.firstIndex(where: { $0.id == conversation.id }) {
             conversations[index] = conversation
         } else {
             conversations.insert(conversation, at: 0)
         }
+        fileCache.removeValue(forKey: conversation.id)
     }
 
     private func drainCaptureInbox() async throws {
@@ -1048,7 +1106,25 @@ extension AppModel {
     func selectAllTurns() {
         selectedTurnIDs = allTurnsSelected ? [] : Set(selectedConversation?.turns.map(\.id) ?? [])
     }
-    func locateFile(_ file: ConversationFile) async {
+    func availableLocalURL(for file: ConversationFile) -> URL? {
+        try? ConversationFileReader().availableURL(file)
+    }
+    func previewFile(_ file: ConversationFile) -> URL? {
+        do { return try ConversationFileReader().availableURL(file) }
+        catch {
+            errorMessage = error.localizedDescription
+            return nil
+        }
+    }
+    func revealFileInFinder(_ file: ConversationFile) {
+        do {
+            let url = try ConversationFileReader().availableURL(file)
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+    func chooseLocalFile(_ file: ConversationFile) async {
         guard var conversation = selectedConversation else { return }
         let panel = NSOpenPanel()
         panel.title = "选择 \(file.name) 的本机副本"

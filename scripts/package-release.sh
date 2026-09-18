@@ -14,7 +14,6 @@ LEGACY_ROOT_APP_PATH="$OUTPUT_DIR/Sidely.app"
 LEGACY_DMG_PATH="$OUTPUT_DIR/Sidely.dmg"
 SIGNING_IDENTITY="${CODEX_BRIDGE_SIGNING_IDENTITY:-}"
 DEVELOPMENT_TEAM_VALUE="${CODEX_BRIDGE_DEVELOPMENT_TEAM:-}"
-RELEASE_CHANNEL="${CODEX_BRIDGE_RELEASE_CHANNEL:-beta}"
 
 mkdir -p "$OUTPUT_DIR"
 
@@ -54,7 +53,12 @@ test -f "$APP_PATH/Contents/Resources/extension/manifest.json"
 codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 
 APP_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Contents/Info.plist")"
+APP_RELEASE_VERSION="$(tr -d '[:space:]' < "$APP_PATH/Contents/Resources/release-version.txt")"
 APP_BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Contents/Info.plist")"
+if [[ -z "$APP_RELEASE_VERSION" ]]; then
+  printf '%s\n' '完整发布版本不能为空；它必须与 GitHub Release tag 的版本一致。' >&2
+  exit 1
+fi
 APP_ARCHS="$(lipo -archs "$APP_PATH/Contents/MacOS/Codex Bridge")"
 if [[ "$APP_ARCHS" == *arm64* && "$APP_ARCHS" == *x86_64* ]]; then
   ARCH_LABEL="universal"
@@ -62,7 +66,7 @@ else
   ARCH_LABEL="${APP_ARCHS// /-}"
 fi
 
-ARTIFACT_BASENAME="Codex-Bridge-${APP_VERSION}-${RELEASE_CHANNEL}-${ARCH_LABEL}"
+ARTIFACT_BASENAME="Codex-Bridge-${APP_RELEASE_VERSION}-${ARCH_LABEL}"
 DMG_PATH="$OUTPUT_DIR/$ARTIFACT_BASENAME.dmg"
 CHECKSUM_PATH="$DMG_PATH.sha256"
 
@@ -72,7 +76,7 @@ ditto "$APP_PATH" "$STAGING_DIR/Codex Bridge.app"
 ln -s /Applications "$STAGING_DIR/Applications"
 
 hdiutil create \
-  -volname "Codex Bridge Beta" \
+  -volname "Codex Bridge" \
   -srcfolder "$STAGING_DIR" \
   -ov \
   -format UDZO \
@@ -95,5 +99,5 @@ fi
 rm -rf "$LEGACY_APP_PATH" "$LEGACY_ROOT_APP_PATH"
 rm -f "$LEGACY_DMG_PATH" "$OUTPUT_DIR/Codex Bridge.dmg"
 
-printf 'Codex Bridge %s (%s)\nApp: %s\nDMG: %s\nSHA-256: %s\n' \
-  "$APP_VERSION" "$APP_BUILD" "$APP_PATH" "$DMG_PATH" "$CHECKSUM_PATH"
+printf 'Codex Bridge %s (%s, marketing %s)\nApp: %s\nDMG: %s\nSHA-256: %s\n' \
+  "$APP_RELEASE_VERSION" "$APP_BUILD" "$APP_VERSION" "$APP_PATH" "$DMG_PATH" "$CHECKSUM_PATH"
