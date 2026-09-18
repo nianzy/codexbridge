@@ -58,7 +58,7 @@ Codex Bridge 是一款原生 macOS App，用来查看和整理 ChatGPT、Codex �
 每个 Release 同时提供 `.sha256` 文件。将 DMG 与校验文件放在同一目录后执行：
 
 ```bash
-shasum -a 256 -c Codex-Bridge-1.1.1-beta.2-universal.dmg.sha256
+shasum -a 256 -c Codex-Bridge-1.1.1-beta.3-universal.dmg.sha256
 ```
 
 输出包含 `OK` 表示文件与发布时生成的校验值一致。

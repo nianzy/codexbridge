@@ -135,7 +135,7 @@ struct CodexArchiveSynchronizationTests {
 
 struct AppUpdateCheckerTests {
     @Test func appBundleIncludesTheFullReleaseVersion() {
-        #expect(AppReleaseMetadata.version(in: .main) == "1.1.1-beta.2")
+        #expect(AppReleaseMetadata.version(in: .main) == "1.1.1-beta.3")
     }
 
     @Test func selectsNewestPublishedReleaseAboveCurrentVersion() throws {
@@ -184,6 +184,66 @@ struct AppUpdateCheckerTests {
         )
 
         #expect(try GitHubReleaseUpdateChecker.newerRelease(in: data, than: "1.1.1-beta.1")?.version == "1.1.1")
+    }
+
+    @Test func releaseFeedFindsTheNextBetaWhenGitHubAPIIsUnavailable() throws {
+        let data = Data(
+            """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <feed xmlns="http://www.w3.org/2005/Atom">
+              <entry>
+                <updated>2026-09-20T08:04:53Z</updated>
+                <link rel="alternate" type="text/html" href="https://github.com/lijingpeng/codexbridge/releases/tag/v1.1.1-beta.3"/>
+                <title>Codex Bridge 1.1.1 Beta 3</title>
+              </entry>
+              <entry>
+                <updated>2026-09-18T08:04:53Z</updated>
+                <link rel="alternate" type="text/html" href="https://github.com/lijingpeng/codexbridge/releases/tag/v1.1.1-beta.2"/>
+                <title>Codex Bridge 1.1.1 Beta 2</title>
+              </entry>
+            </feed>
+            """.utf8
+        )
+
+        let release = try GitHubReleaseUpdateChecker.newerRelease(inFeed: data, than: "1.1.1-beta.2")
+
+        #expect(release?.version == "1.1.1-beta.3")
+        #expect(release?.title == "Codex Bridge 1.1.1 Beta 3")
+        #expect(release?.isPrerelease == true)
+        #expect(release?.pageURL.lastPathComponent == "v1.1.1-beta.3")
+    }
+
+    @Test func stableBuildIgnoresPrereleasesFromReleaseFeed() throws {
+        let data = Data(
+            """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <feed xmlns="http://www.w3.org/2005/Atom">
+              <entry>
+                <updated>2026-09-21T08:04:53Z</updated>
+                <link rel="alternate" type="text/html" href="https://github.com/lijingpeng/codexbridge/releases/tag/v2.0.0-beta.1"/>
+                <title>Beta</title>
+              </entry>
+              <entry>
+                <updated>2026-09-20T08:04:53Z</updated>
+                <link rel="alternate" type="text/html" href="https://github.com/lijingpeng/codexbridge/releases/tag/v1.2.0"/>
+                <title>Stable</title>
+              </entry>
+            </feed>
+            """.utf8
+        )
+
+        let release = try GitHubReleaseUpdateChecker.newerRelease(inFeed: data, than: "1.1.1")
+
+        #expect(release?.version == "1.2.0")
+        #expect(release?.isPrerelease == false)
+    }
+
+    @Test func readsSHA256FromReleaseChecksumFile() {
+        let digest = String(repeating: "A", count: 64)
+        let data = Data("\(digest)  Codex-Bridge-1.1.1-beta.3-universal.dmg\n".utf8)
+
+        #expect(GitHubReleaseUpdateChecker.sha256(inChecksumFile: data) == digest.lowercased())
+        #expect(GitHubReleaseUpdateChecker.sha256(inChecksumFile: Data("not-a-digest".utf8)) == nil)
     }
 
     @Test func selectsVerifiedUniversalDiskImageForInstallation() throws {

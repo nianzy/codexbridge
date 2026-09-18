@@ -44,18 +44,31 @@ enum AppUpdateCheckError: LocalizedError {
     case invalidResponse
 
     var errorDescription: String? {
-        "暂时无法检查更新，请稍后重试。"
+        "暂时无法连接更新服务。请检查网络，或打开发布页面手动下载。"
     }
 }
 
 struct GitHubReleaseUpdateChecker: AppUpdateChecking {
+    static let releasesPageURL = URL(string: "https://github.com/lijingpeng/codexbridge/releases")!
+
     private let releasesURL = URL(string: "https://api.github.com/repos/lijingpeng/codexbridge/releases?per_page=20")!
+    private let releasesFeedURL = URL(string: "https://github.com/lijingpeng/codexbridge/releases.atom")!
 
     func latestRelease(newerThan currentVersion: String) async throws -> AppRelease? {
+        do {
+            return try await latestReleaseFromAPI(newerThan: currentVersion)
+        } catch {
+            do {
+                return try await latestReleaseFromFeed(newerThan: currentVersion)
+            } catch {
+                throw AppUpdateCheckError.invalidResponse
+            }
+        }
+    }
+
+    private func latestReleaseFromAPI(newerThan currentVersion: String) async throws -> AppRelease? {
         var request = URLRequest(url: releasesURL)
-        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
-        request.setValue("Codex-Bridge/\(currentVersion)", forHTTPHeaderField: "User-Agent")
+        configure(&request, currentVersion: currentVersion)
         request.timeoutInterval = 12
 
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -63,6 +76,57 @@ struct GitHubReleaseUpdateChecker: AppUpdateChecking {
             throw AppUpdateCheckError.invalidResponse
         }
         return try Self.newerRelease(in: data, than: currentVersion)
+    }
+
+    private func latestReleaseFromFeed(newerThan currentVersion: String) async throws -> AppRelease? {
+        var request = URLRequest(url: releasesFeedURL)
+        configure(&request, currentVersion: currentVersion)
+        request.setValue("application/atom+xml", forHTTPHeaderField: "Accept")
+        request.timeoutInterval = 12
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let response = response as? HTTPURLResponse, response.statusCode == 200,
+              let release = try Self.newerRelease(inFeed: data, than: currentVersion) else {
+            if (response as? HTTPURLResponse)?.statusCode == 200 { return nil }
+            throw AppUpdateCheckError.invalidResponse
+        }
+
+        let asset = try? await feedAsset(for: release, currentVersion: currentVersion)
+        return AppRelease(
+            version: release.version,
+            title: release.title,
+            pageURL: release.pageURL,
+            publishedAt: release.publishedAt,
+            isPrerelease: release.isPrerelease,
+            asset: asset
+        )
+    }
+
+    private func feedAsset(for release: AppRelease, currentVersion: String) async throws -> AppReleaseAsset {
+        let tag = release.pageURL.lastPathComponent
+        let assetName = "Codex-Bridge-\(release.version)-universal.dmg"
+        let baseURL = URL(string: "https://github.com/lijingpeng/codexbridge/releases/download")!
+            .appendingPathComponent(tag, isDirectory: true)
+        let downloadURL = baseURL.appendingPathComponent(assetName)
+        let checksumURL = baseURL.appendingPathComponent("\(assetName).sha256")
+
+        var request = URLRequest(url: checksumURL)
+        configure(&request, currentVersion: currentVersion)
+        request.timeoutInterval = 12
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard data.count <= 4_096,
+              let response = response as? HTTPURLResponse,
+              response.statusCode == 200,
+              let sha256 = Self.sha256(inChecksumFile: data) else {
+            throw AppUpdateCheckError.invalidResponse
+        }
+        return AppReleaseAsset(name: assetName, downloadURL: downloadURL, sha256: sha256, size: nil)
+    }
+
+    private func configure(_ request: inout URLRequest, currentVersion: String) {
+        request.cachePolicy = .reloadRevalidatingCacheData
+        request.setValue("Codex-Bridge/\(currentVersion)", forHTTPHeaderField: "User-Agent")
+        request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
     }
 
     static func newerRelease(in data: Data, than currentVersion: String) throws -> AppRelease? {
@@ -87,6 +151,43 @@ struct GitHubReleaseUpdateChecker: AppUpdateChecking {
             }
             .max { $0.0 < $1.0 }?
             .1
+    }
+
+    static func newerRelease(inFeed data: Data, than currentVersion: String) throws -> AppRelease? {
+        guard let current = NumericVersion(currentVersion) else { return nil }
+        let entries = try GitHubReleaseFeedParser.parse(data)
+        return entries.compactMap { entry -> (NumericVersion, AppRelease)? in
+            guard let pageURL = entry.pageURL,
+                  pageURL.scheme == "https",
+                  pageURL.host?.lowercased() == "github.com",
+                  pageURL.path.hasPrefix("/lijingpeng/codexbridge/releases/tag/"),
+                  let version = NumericVersion(pageURL.lastPathComponent),
+                  version > current,
+                  current.isPrerelease || !version.isPrerelease else { return nil }
+            return (
+                version,
+                AppRelease(
+                    version: version.description,
+                    title: entry.title.isEmpty ? "Codex Bridge \(version.description)" : entry.title,
+                    pageURL: pageURL,
+                    publishedAt: entry.updatedAt,
+                    isPrerelease: version.isPrerelease,
+                    asset: nil
+                )
+            )
+        }
+        .max { $0.0 < $1.0 }?
+        .1
+    }
+
+    static func sha256(inChecksumFile data: Data) -> String? {
+        guard let text = String(data: data, encoding: .utf8),
+              let digest = text.split(whereSeparator: { $0.isWhitespace }).first.map(String.init) else {
+            return nil
+        }
+        let normalized = digest.lowercased()
+        guard normalized.count == 64, normalized.allSatisfy({ $0.isHexDigit }) else { return nil }
+        return normalized
     }
 
     private static func downloadableAsset(from assets: [GitHubReleaseAsset]) -> AppReleaseAsset? {
@@ -117,6 +218,65 @@ struct GitHubReleaseUpdateChecker: AppUpdateChecking {
         guard parts.count == 2, parts[0] == "sha256", parts[1].count == 64,
               parts[1].allSatisfy({ $0.isHexDigit }) else { return nil }
         return String(parts[1])
+    }
+}
+
+private struct GitHubReleaseFeedEntry {
+    var title = ""
+    var pageURL: URL?
+    var updatedAt: Date?
+}
+
+private final class GitHubReleaseFeedParser: NSObject, XMLParserDelegate {
+    private var entries: [GitHubReleaseFeedEntry] = []
+    private var currentEntry: GitHubReleaseFeedEntry?
+    private var text = ""
+
+    static func parse(_ data: Data) throws -> [GitHubReleaseFeedEntry] {
+        let delegate = GitHubReleaseFeedParser()
+        let parser = XMLParser(data: data)
+        parser.delegate = delegate
+        parser.shouldResolveExternalEntities = false
+        guard parser.parse() else { throw AppUpdateCheckError.invalidResponse }
+        return delegate.entries
+    }
+
+    func parser(
+        _ parser: XMLParser,
+        didStartElement elementName: String,
+        namespaceURI: String?,
+        qualifiedName qName: String?,
+        attributes attributeDict: [String: String] = [:]
+    ) {
+        text = ""
+        if elementName == "entry" { currentEntry = GitHubReleaseFeedEntry() }
+        if elementName == "link", currentEntry != nil,
+           attributeDict["rel"] == "alternate",
+           let href = attributeDict["href"] {
+            currentEntry?.pageURL = URL(string: href)
+        }
+    }
+
+    func parser(_ parser: XMLParser, foundCharacters string: String) {
+        text += string
+    }
+
+    func parser(
+        _ parser: XMLParser,
+        didEndElement elementName: String,
+        namespaceURI: String?,
+        qualifiedName qName: String?
+    ) {
+        guard var entry = currentEntry else { return }
+        let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if elementName == "title" { entry.title = value }
+        if elementName == "updated" { entry.updatedAt = ISO8601DateFormatter().date(from: value) }
+        currentEntry = entry
+        if elementName == "entry" {
+            entries.append(entry)
+            currentEntry = nil
+        }
+        text = ""
     }
 }
 

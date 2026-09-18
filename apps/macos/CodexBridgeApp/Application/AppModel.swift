@@ -754,6 +754,10 @@ final class AppModel {
         NSWorkspace.shared.open(release.pageURL)
     }
 
+    func openReleasesPage() {
+        NSWorkspace.shared.open(GitHubReleaseUpdateChecker.releasesPageURL)
+    }
+
     func installAvailableUpdate() async {
         guard !isUpdateBusy, let release = currentAvailableRelease else { return }
         guard release.asset != nil else {

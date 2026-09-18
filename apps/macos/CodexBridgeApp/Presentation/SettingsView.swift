@@ -832,6 +832,11 @@ private struct AboutSettingsPane: View {
                     Button("重试安装") { Task { await model.installAvailableUpdate() } }
                         .buttonStyle(CodexBridgePrimaryButtonStyle(compact: true))
                 }
+            case .failed:
+                Button("发布页面", action: model.openReleasesPage)
+                    .buttonStyle(CodexBridgeSecondaryButtonStyle(compact: true))
+                Button("重试") { Task { await model.checkForUpdates() } }
+                    .buttonStyle(CodexBridgePrimaryButtonStyle(compact: true))
             default:
                 Button("检查更新") { Task { await model.checkForUpdates() } }
                     .buttonStyle(CodexBridgeSecondaryButtonStyle(compact: true))
