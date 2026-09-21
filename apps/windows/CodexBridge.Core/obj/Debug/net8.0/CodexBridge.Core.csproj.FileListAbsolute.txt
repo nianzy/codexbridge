@@ -1,0 +1,12 @@
+E:\Projects\codexbridge-win\apps\windows\CodexBridge.Core\bin\Debug\net8.0\CodexBridge.Core.deps.json
+E:\Projects\codexbridge-win\apps\windows\CodexBridge.Core\bin\Debug\net8.0\CodexBridge.Core.dll
+E:\Projects\codexbridge-win\apps\windows\CodexBridge.Core\bin\Debug\net8.0\CodexBridge.Core.pdb
+E:\Projects\codexbridge-win\apps\windows\CodexBridge.Core\obj\Debug\net8.0\CodexBridge.Core.GeneratedMSBuildEditorConfig.editorconfig
+E:\Projects\codexbridge-win\apps\windows\CodexBridge.Core\obj\Debug\net8.0\CodexBridge.Core.AssemblyInfoInputs.cache
+E:\Projects\codexbridge-win\apps\windows\CodexBridge.Core\obj\Debug\net8.0\CodexBridge.Core.AssemblyInfo.cs
+E:\Projects\codexbridge-win\apps\windows\CodexBridge.Core\obj\Debug\net8.0\CodexBridge.Core.csproj.CoreCompileInputs.cache
+E:\Projects\codexbridge-win\apps\windows\CodexBridge.Core\obj\Debug\net8.0\CodexBridge.Core.sourcelink.json
+E:\Projects\codexbridge-win\apps\windows\CodexBridge.Core\obj\Debug\net8.0\CodexBridge.Core.dll
+E:\Projects\codexbridge-win\apps\windows\CodexBridge.Core\obj\Debug\net8.0\refint\CodexBridge.Core.dll
+E:\Projects\codexbridge-win\apps\windows\CodexBridge.Core\obj\Debug\net8.0\CodexBridge.Core.pdb
+E:\Projects\codexbridge-win\apps\windows\CodexBridge.Core\obj\Debug\net8.0\ref\CodexBridge.Core.dll

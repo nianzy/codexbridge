@@ -1,0 +1,187 @@
+{
+  "format": 1,
+  "restore": {
+    "E:\\Projects\\codexbridge-win\\apps\\windows\\CodexBridge.Core.Tests\\CodexBridge.Core.Tests.csproj": {}
+  },
+  "projects": {
+    "E:\\Projects\\codexbridge-win\\apps\\windows\\CodexBridge.Core.Tests\\CodexBridge.Core.Tests.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "E:\\Projects\\codexbridge-win\\apps\\windows\\CodexBridge.Core.Tests\\CodexBridge.Core.Tests.csproj",
+        "projectName": "CodexBridge.Core.Tests",
+        "projectPath": "E:\\Projects\\codexbridge-win\\apps\\windows\\CodexBridge.Core.Tests\\CodexBridge.Core.Tests.csproj",
+        "packagesPath": "C:\\Users\\Nnn\\.nuget\\packages\\",
+        "outputPath": "E:\\Projects\\codexbridge-win\\apps\\windows\\CodexBridge.Core.Tests\\obj\\",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "C:\\Users\\Nnn\\AppData\\Roaming\\NuGet\\NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {
+              "E:\\Projects\\codexbridge-win\\apps\\windows\\CodexBridge.Core\\CodexBridge.Core.csproj": {
+                "projectPath": "E:\\Projects\\codexbridge-win\\apps\\windows\\CodexBridge.Core\\CodexBridge.Core.csproj"
+              },
+              "E:\\Projects\\codexbridge-win\\apps\\windows\\CodexBridge.NativeHost\\CodexBridge.NativeHost.csproj": {
+                "projectPath": "E:\\Projects\\codexbridge-win\\apps\\windows\\CodexBridge.NativeHost\\CodexBridge.NativeHost.csproj"
+              }
+            }
+          }
+        },
+        "warningProperties": {
+          "allWarningsAsErrors": true,
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        }
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.425/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    },
+    "E:\\Projects\\codexbridge-win\\apps\\windows\\CodexBridge.Core\\CodexBridge.Core.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "E:\\Projects\\codexbridge-win\\apps\\windows\\CodexBridge.Core\\CodexBridge.Core.csproj",
+        "projectName": "CodexBridge.Core",
+        "projectPath": "E:\\Projects\\codexbridge-win\\apps\\windows\\CodexBridge.Core\\CodexBridge.Core.csproj",
+        "packagesPath": "C:\\Users\\Nnn\\.nuget\\packages\\",
+        "outputPath": "E:\\Projects\\codexbridge-win\\apps\\windows\\CodexBridge.Core\\obj\\",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "C:\\Users\\Nnn\\AppData\\Roaming\\NuGet\\NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "allWarningsAsErrors": true,
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        }
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.425/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    },
+    "E:\\Projects\\codexbridge-win\\apps\\windows\\CodexBridge.NativeHost\\CodexBridge.NativeHost.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "E:\\Projects\\codexbridge-win\\apps\\windows\\CodexBridge.NativeHost\\CodexBridge.NativeHost.csproj",
+        "projectName": "CodexBridge.NativeHost",
+        "projectPath": "E:\\Projects\\codexbridge-win\\apps\\windows\\CodexBridge.NativeHost\\CodexBridge.NativeHost.csproj",
+        "packagesPath": "C:\\Users\\Nnn\\.nuget\\packages\\",
+        "outputPath": "E:\\Projects\\codexbridge-win\\apps\\windows\\CodexBridge.NativeHost\\obj\\",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "C:\\Users\\Nnn\\AppData\\Roaming\\NuGet\\NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {
+              "E:\\Projects\\codexbridge-win\\apps\\windows\\CodexBridge.Core\\CodexBridge.Core.csproj": {
+                "projectPath": "E:\\Projects\\codexbridge-win\\apps\\windows\\CodexBridge.Core\\CodexBridge.Core.csproj"
+              }
+            }
+          }
+        },
+        "warningProperties": {
+          "allWarningsAsErrors": true,
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        }
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.425/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    }
+  }
+}

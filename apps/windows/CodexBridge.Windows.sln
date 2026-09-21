@@ -1,0 +1,30 @@
+﻿Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CodexBridge.Core", "CodexBridge.Core\CodexBridge.Core.csproj", "{74B94537-43D6-4E21-A662-7A06CDA4432F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CodexBridge.NativeHost", "CodexBridge.NativeHost\CodexBridge.NativeHost.csproj", "{1FC4F3B4-AF8A-4E20-818D-035BFB9E2DB8}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CodexBridge.Core.Tests", "CodexBridge.Core.Tests\CodexBridge.Core.Tests.csproj", "{8E566B4C-E4B6-4A07-A925-291D1ED78413}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{74B94537-43D6-4E21-A662-7A06CDA4432F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{74B94537-43D6-4E21-A662-7A06CDA4432F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{74B94537-43D6-4E21-A662-7A06CDA4432F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{74B94537-43D6-4E21-A662-7A06CDA4432F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1FC4F3B4-AF8A-4E20-818D-035BFB9E2DB8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1FC4F3B4-AF8A-4E20-818D-035BFB9E2DB8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1FC4F3B4-AF8A-4E20-818D-035BFB9E2DB8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1FC4F3B4-AF8A-4E20-818D-035BFB9E2DB8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8E566B4C-E4B6-4A07-A925-291D1ED78413}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8E566B4C-E4B6-4A07-A925-291D1ED78413}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8E566B4C-E4B6-4A07-A925-291D1ED78413}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8E566B4C-E4B6-4A07-A925-291D1ED78413}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
