@@ -8,6 +8,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CodexBridge.NativeHost", "C
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CodexBridge.Core.Tests", "CodexBridge.Core.Tests\CodexBridge.Core.Tests.csproj", "{8E566B4C-E4B6-4A07-A925-291D1ED78413}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CodexBridge.App", "CodexBridge.App\CodexBridge.App.csproj", "{A5E1F2A3-0E36-4CB8-9BC4-C7E0C5FE4DD4}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CodexBridge.App.Tests", "CodexBridge.App.Tests\CodexBridge.App.Tests.csproj", "{B4C9D7E2-3D98-4F3A-8E5E-11F9B2A66B7A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -26,5 +30,13 @@ Global
 		{8E566B4C-E4B6-4A07-A925-291D1ED78413}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{8E566B4C-E4B6-4A07-A925-291D1ED78413}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{8E566B4C-E4B6-4A07-A925-291D1ED78413}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A5E1F2A3-0E36-4CB8-9BC4-C7E0C5FE4DD4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A5E1F2A3-0E36-4CB8-9BC4-C7E0C5FE4DD4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A5E1F2A3-0E36-4CB8-9BC4-C7E0C5FE4DD4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A5E1F2A3-0E36-4CB8-9BC4-C7E0C5FE4DD4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B4C9D7E2-3D98-4F3A-8E5E-11F9B2A66B7A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B4C9D7E2-3D98-4F3A-8E5E-11F9B2A66B7A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B4C9D7E2-3D98-4F3A-8E5E-11F9B2A66B7A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B4C9D7E2-3D98-4F3A-8E5E-11F9B2A66B7A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

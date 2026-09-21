@@ -18,9 +18,16 @@ xcuserdata/
 
 # App packaging and symbols
 *.app
+# Keep the Windows WPF project visible despite the macOS bundle rule.
+!apps/windows/CodexBridge.App/
+!apps/windows/CodexBridge.App/**
 *.dSYM
 *.dSYM.zip
 *.ipa
+
+# .NET build products
+**/bin/
+**/obj/
 
 # Local environment and secrets
 .env
