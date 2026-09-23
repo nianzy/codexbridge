@@ -16,6 +16,7 @@
         <DockPanel Grid.Row="0" Margin="0,0,0,10">
             <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
                 <Button Command="{Binding RefreshCommand}" Content="刷新" Padding="14,5" Margin="0,0,6,0" />
+                <Button Command="{Binding RefreshCodexCommand}" Content="刷新 Codex" Padding="14,5" Margin="0,0,6,0" />
                 <Button Command="{Binding SelectAllCommand}" Content="全选轮次" Padding="14,5" Margin="0,0,6,0" />
                 <Button Command="{Binding ClearSelectionCommand}" Content="取消全选" Padding="14,5" Margin="0,0,6,0" />
                 <Button Command="{Binding CopyDraftCommand}" Content="复制草稿" Padding="14,5" Margin="0,0,6,0" />
@@ -23,7 +24,9 @@
             </StackPanel>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <TextBlock Text="Native Messaging: " VerticalAlignment="Center" />
-                <TextBlock Text="{Binding NativeMessagingText}" VerticalAlignment="Center" FontWeight="SemiBold" />
+                <TextBlock Text="{Binding NativeMessagingText}" VerticalAlignment="Center" FontWeight="SemiBold" Margin="0,0,14,0" />
+                <TextBlock Text="Codex: " VerticalAlignment="Center" />
+                <TextBlock Text="{Binding CodexStatusText}" VerticalAlignment="Center" FontWeight="SemiBold" />
             </StackPanel>
         </DockPanel>
 
@@ -34,20 +37,36 @@
                 <ColumnDefinition Width="390" />
             </Grid.ColumnDefinitions>
 
-            <GroupBox Grid.Column="0" Header="ChatGPT 会话" Margin="0,0,8,0">
-                <ListBox ItemsSource="{Binding Conversations}"
-                         SelectedItem="{Binding SelectedConversation, Mode=TwoWay}"
-                         BorderThickness="0">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <StackPanel Margin="4">
-                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                <TextBlock Text="{Binding Details}" FontSize="11" Foreground="Gray" />
-                            </StackPanel>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
-            </GroupBox>
+            <TabControl Grid.Column="0" SelectedIndex="{Binding SourceIndex, Mode=TwoWay}" Margin="0,0,8,0">
+                <TabItem Header="ChatGPT">
+                    <ListBox ItemsSource="{Binding Conversations}"
+                             SelectedItem="{Binding SelectedConversation, Mode=TwoWay}"
+                             BorderThickness="0">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Margin="4">
+                                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding Details}" FontSize="11" Foreground="Gray" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </TabItem>
+                <TabItem Header="Codex">
+                    <ListBox ItemsSource="{Binding CodexThreads}"
+                             SelectedItem="{Binding SelectedCodexThread, Mode=TwoWay}"
+                             BorderThickness="0">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Margin="4">
+                                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding Details}" FontSize="11" Foreground="Gray" TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </TabItem>
+            </TabControl>
 
             <GroupBox Grid.Column="1" Header="对话轮次" Margin="0,0,8,0">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -59,9 +78,9 @@
                                         <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}">
                                             <TextBlock Text="{Binding Heading}" FontWeight="SemiBold" />
                                         </CheckBox>
-                                        <TextBlock Text="User" FontWeight="SemiBold" Margin="22,8,0,2" />
+                                        <TextBlock Text="{Binding UserLabel}" FontWeight="SemiBold" Margin="22,8,0,2" />
                                         <TextBlock Text="{Binding Turn.User.Text}" TextWrapping="Wrap" Margin="22,0,0,4" />
-                                        <TextBlock Text="Assistant" FontWeight="SemiBold" Margin="22,4,0,2" />
+                                        <TextBlock Text="{Binding AssistantLabel}" FontWeight="SemiBold" Margin="22,4,0,2" />
                                         <TextBlock Text="{Binding Turn.Assistant.Text, TargetNullValue=（尚无回复）}"
                                                    TextWrapping="Wrap" Margin="22,0,0,0" />
                                     </StackPanel>
@@ -84,6 +103,12 @@
             </GroupBox>
         </Grid>
 
-        <TextBlock Grid.Row="2" Text="{Binding StatusText}" Foreground="Gray" Margin="0,8,0,0" />
+        <StackPanel Grid.Row="2" Margin="0,8,0,0">
+            <TextBlock Text="{Binding StatusText}" Foreground="Gray" />
+            <TextBlock Text="{Binding CodexErrorDetail}"
+                       Foreground="DarkRed"
+                       TextWrapping="Wrap"
+                       Margin="0,3,0,0" />
+        </StackPanel>
     </Grid>
 </Window>

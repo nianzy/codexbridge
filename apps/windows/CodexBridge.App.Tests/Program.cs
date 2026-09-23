@@ -1,6 +1,8 @@
 using System.IO;
 using CodexBridge.App.Infrastructure;
+using CodexBridge.App.ViewModels;
 using CodexBridge.Core.Capture;
+using CodexBridge.Core.Codex;
 using CodexBridge.Core.Conversations;
 
 var tests = new (string Name, Func<Task> Test)[]
@@ -13,6 +15,10 @@ var tests = new (string Name, Func<Task> Test)[]
     ("turn selection is independent from payload", TurnSelectionIsIndependentAsync),
     ("draft renderer matches the macOS format", DraftRendererMatchesMacFormatAsync),
     ("conversation ordering uses updated time", ConversationOrderingUsesUpdatedTimeAsync),
+    ("Codex refresh connects and fills UI collection", CodexRefreshConnectsAndFillsCollectionAsync),
+    ("Codex refresh preserves exception detail", CodexRefreshPreservesExceptionDetailAsync),
+    ("Codex error does not clear ChatGPT conversations", CodexErrorDoesNotClearChatGptConversationsAsync),
+    ("faulted Codex refresh recreates client", FaultedCodexRefreshRecreatesClientAsync),
 };
 
 var failures = 0;
@@ -154,6 +160,78 @@ static async Task ConversationOrderingUsesUpdatedTimeAsync()
     Assert(ordered[0].SourceConversationId == "newer", "latest updated conversation is not first");
 }
 
+static async Task CodexRefreshConnectsAndFillsCollectionAsync()
+{
+    await using var scope = await TestScope.CreateAsync();
+    await using var importer = new CaptureInboxImporter(scope.Repository, inboxDirectory: scope.Inbox);
+    await using var client = FakeCodexClient.Success();
+    await using var viewModel = new MainWindowViewModel(scope.Repository, importer, client);
+
+    await viewModel.RefreshCodexAsync();
+
+    Assert(viewModel.CodexStatusText.StartsWith("Connected", StringComparison.Ordinal), "successful refresh did not connect");
+    Assert(viewModel.CodexThreads.Count == 1, "successful refresh did not populate the Codex collection");
+    Assert(string.IsNullOrEmpty(viewModel.CodexErrorDetail), "successful refresh retained an error detail");
+}
+
+static async Task CodexRefreshPreservesExceptionDetailAsync()
+{
+    await using var scope = await TestScope.CreateAsync();
+    await using var importer = new CaptureInboxImporter(scope.Repository, inboxDirectory: scope.Inbox);
+    await using var client = FakeCodexClient.Failure(new InvalidOperationException("diagnostic fixture", new IOException("inner fixture")));
+    await using var viewModel = new MainWindowViewModel(scope.Repository, importer, client);
+
+    await viewModel.RefreshCodexAsync();
+
+    Assert(viewModel.CodexStatusText == "Error", "failed refresh did not set Error status");
+    Assert(viewModel.CodexErrorDetail.Contains("System.InvalidOperationException", StringComparison.Ordinal), "exception type was lost");
+    Assert(viewModel.CodexErrorDetail.Contains("diagnostic fixture", StringComparison.Ordinal), "exception message was lost");
+    Assert(viewModel.CodexErrorDetail.Contains("inner fixture", StringComparison.Ordinal), "inner exception message was lost");
+}
+
+static async Task CodexErrorDoesNotClearChatGptConversationsAsync()
+{
+    await using var scope = await TestScope.CreateAsync();
+    await scope.Repository.SaveAsync(new CaptureValidator().Validate(CaptureJson.Serialize(LoadFixture())));
+    await using var importer = new CaptureInboxImporter(scope.Repository, inboxDirectory: scope.Inbox);
+    await using var client = FakeCodexClient.Failure(new InvalidOperationException("Codex unavailable"));
+    await using var viewModel = new MainWindowViewModel(scope.Repository, importer, client);
+
+    await viewModel.RefreshAsync();
+    await viewModel.RefreshCodexAsync();
+
+    Assert(viewModel.Conversations.Count == 1, "Codex error changed the ChatGPT conversation collection");
+    Assert(viewModel.CodexStatusText == "Error", "Codex error status mismatch");
+}
+
+static async Task FaultedCodexRefreshRecreatesClientAsync()
+{
+    await using var scope = await TestScope.CreateAsync();
+    await using var importer = new CaptureInboxImporter(scope.Repository, inboxDirectory: scope.Inbox);
+    var oldClient = FakeCodexClient.Failure(new CodexProtocolException("invalid JSON"));
+    var replacement = FakeCodexClient.Success();
+    var factoryCalls = 0;
+    await using var viewModel = new MainWindowViewModel(
+        scope.Repository,
+        importer,
+        oldClient,
+        codexClientFactory: () =>
+        {
+            factoryCalls++;
+            return replacement;
+        });
+
+    await viewModel.RefreshCodexAsync();
+    Assert(viewModel.CodexStatusText == "Error", "first faulted refresh did not fail");
+    oldClient.MarkFaulted();
+    await viewModel.RefreshCodexAsync();
+
+    Assert(factoryCalls == 1, "faulted refresh did not create exactly one replacement client");
+    Assert(viewModel.CodexStatusText.StartsWith("Connected", StringComparison.Ordinal), "replacement client did not reconnect");
+    Assert(viewModel.CodexThreads.Count == 1, "replacement client did not load threads");
+    Assert(oldClient.WasDisposed, "old faulted client was not disposed");
+}
+
 static void Assert(bool condition, string message)
 {
     if (!condition)
@@ -218,4 +296,77 @@ sealed class TestTimeProvider : TimeProvider
     public void Advance(TimeSpan amount) => utcNow += amount;
 
     public override DateTimeOffset GetUtcNow() => utcNow;
+}
+
+sealed class FakeCodexClient : ICodexClient
+{
+    private readonly Exception? failure;
+    private readonly IReadOnlyList<CodexThreadSummary> threads;
+    private bool faulted;
+
+    private FakeCodexClient(Exception? failure, IReadOnlyList<CodexThreadSummary> threads)
+    {
+        this.failure = failure;
+        this.threads = threads;
+    }
+
+    public CodexConnectionStatus Status => failure is null
+        ? CodexConnectionStatus.Connected()
+        : CodexConnectionStatus.Error();
+
+    public string? ExecutablePath => "C:\\fixture\\codex.exe";
+
+    public bool IsFaulted => faulted;
+
+    public bool WasDisposed { get; private set; }
+
+    public static FakeCodexClient Success() => new(
+        null,
+        new[]
+        {
+            new CodexThreadSummary(
+                "thread-1",
+                "Fixture thread",
+                "Fixture preview",
+                "C:\\fixture",
+                DateTimeOffset.UtcNow,
+                DateTimeOffset.UtcNow,
+                DateTimeOffset.UtcNow,
+                false,
+                "fixture-model"),
+        });
+
+    public static FakeCodexClient Failure(Exception exception)
+    {
+        return new FakeCodexClient(exception, Array.Empty<CodexThreadSummary>());
+    }
+
+    public void MarkFaulted() => faulted = true;
+
+    public Task<CodexProbe> ProbeAsync(CancellationToken cancellationToken = default)
+    {
+        if (failure is not null)
+        {
+            return Task.FromException<CodexProbe>(failure);
+        }
+
+        return Task.FromResult(new CodexProbe(
+            new CodexInitializeResult("fixture", "C:\\fixture\\.codex", "windows", "windows"),
+            new CodexAccount(null, null, true),
+            Array.Empty<CodexModelOption>()));
+    }
+
+    public Task<IReadOnlyList<CodexThreadSummary>> ListThreadsAsync(
+        int limit = 100,
+        CancellationToken cancellationToken = default) => Task.FromResult(threads);
+
+    public Task<CodexThreadSnapshot> ReadThreadAsync(
+        string threadId,
+        CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+    public ValueTask DisposeAsync()
+    {
+        WasDisposed = true;
+        return ValueTask.CompletedTask;
+    }
 }
