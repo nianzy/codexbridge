@@ -1,10 +1,10 @@
 <UserControl x:Class="CodexBridge.App.Controls.GitStatusView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Border Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,1,0" Padding="8">
+    <Border Background="{DynamicResource PanelBackground}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,1,0" Padding="8">
         <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-            <DockPanel><TextBlock Text="Git Status" FontFamily="Segoe UI Semibold" FontSize="15"/><Button Content="↻" Click="RefreshClick" DockPanel.Dock="Right" Padding="6,2"/></DockPanel>
-            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,6"><TextBlock Text="{Binding GitBranch}"/><TextBlock Text="{Binding GitModifiedCount, StringFormat=  Modified: {0}}"/><TextBlock Text="{Binding GitAddedCount, StringFormat=  Added: {0}}"/><TextBlock Text="{Binding GitDeletedCount, StringFormat=  Deleted: {0}}"/></StackPanel>
+            <DockPanel><TextBlock Text="Git" FontFamily="Segoe UI Semibold" FontSize="15" Foreground="{DynamicResource TextPrimary}"/><Button Content="Refresh" Click="RefreshClick" DockPanel.Dock="Right" Style="{StaticResource ToolbarButtonStyle}"/></DockPanel>
+            <TextBlock Grid.Row="1" Text="{Binding GitBranch}" Margin="0,6" Foreground="{DynamicResource TextSecondary}" />
             <ListBox Grid.Row="2" ItemsSource="{Binding GitChangedFiles}" SelectionChanged="FileSelected" BorderThickness="0">
-                <ListBox.ItemTemplate><DataTemplate><DockPanel Margin="2"><DockPanel.ContextMenu><ContextMenu><MenuItem Header="Add Diff to Context" Click="AddContextClick"/></ContextMenu></DockPanel.ContextMenu><TextBlock Text="{Binding Status}" FontFamily="Consolas" Width="22"/><TextBlock Text="{Binding Path}" TextTrimming="CharacterEllipsis"/></DockPanel></DataTemplate></ListBox.ItemTemplate>
+                <ListBox.ItemTemplate><DataTemplate><DockPanel Margin="2" ToolTip="{Binding Path}"><DockPanel.ContextMenu><ContextMenu><MenuItem Header="Add Diff to Context" Click="AddContextClick"/></ContextMenu></DockPanel.ContextMenu><TextBlock Text="{Binding Status}" FontFamily="Consolas" Foreground="{DynamicResource TextPrimary}" Width="22"/><TextBlock Text="{Binding Path}" Foreground="{DynamicResource TextSecondary}" TextTrimming="CharacterEllipsis"/></DockPanel></DataTemplate></ListBox.ItemTemplate>
             </ListBox>
         </Grid>
     </Border>

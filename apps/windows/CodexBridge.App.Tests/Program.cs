@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text;
+using System.Xml.Linq;
 using System.Windows;
 using CodexBridge.App.Infrastructure;
 using CodexBridge.App.ViewModels;
@@ -29,6 +30,8 @@ var tests = new (string Name, Func<Task> Test)[]
     ("context pack empty render is safe", ContextPackEmptyRenderAsync),
     ("context pack size boundaries classify correctly", ContextPackSizeClassificationAsync),
     ("context pack character estimate matches items", ContextPackCharacterEstimateAsync),
+    ("theme shared styles remain outside color dictionaries", ThemeSharedStylesAreSeparatedAsync),
+    ("light and dark theme keys are symmetric", ThemeColorKeysAreSymmetricAsync),
 };
 
 var failures = 0;
@@ -405,6 +408,53 @@ static Task ContextPackCharacterEstimateAsync()
     var pack = service.Create("Context Pack", new WorkspaceItem("fixture", Path.GetTempPath(), DateTimeOffset.UtcNow), [new ContextPackItem("Note", "n", "Notes", "abc", "n", 0, "n")]);
     Assert(pack.EstimatedCharacters == 3, "character estimate mismatch");
     return Task.CompletedTask;
+}
+
+static Task ThemeSharedStylesAreSeparatedAsync()
+{
+    var colors = LoadThemeDocument("Colors.xaml");
+    var styles = LoadThemeDocument("Styles.xaml");
+    var colorKeys = ResourceKeys(colors);
+    var styleKeys = ResourceKeys(styles);
+    foreach (var key in new[] { "PrimaryButtonStyle", "SecondaryButtonStyle", "SessionListItemStyle", "ToolbarButtonStyle", "DisabledButtonStyle" })
+    {
+        Assert(styleKeys.Contains(key), $"shared style missing from Styles.xaml: {key}");
+        Assert(!colorKeys.Contains(key), $"shared style leaked into Colors.xaml: {key}");
+    }
+
+    return Task.CompletedTask;
+}
+
+static Task ThemeColorKeysAreSymmetricAsync()
+{
+    var lightKeys = ResourceKeys(LoadThemeDocument("Colors.xaml"));
+    var darkKeys = ResourceKeys(LoadThemeDocument("DarkColors.xaml"));
+    Assert(lightKeys.SetEquals(darkKeys), "Light and Dark color dictionaries do not expose the same keys");
+    return Task.CompletedTask;
+}
+
+static XDocument LoadThemeDocument(string fileName)
+{
+    var directory = new DirectoryInfo(AppContext.BaseDirectory);
+    while (directory is not null && !Directory.Exists(Path.Combine(directory.FullName, "apps", "windows", "CodexBridge.App", "Themes")))
+    {
+        directory = directory.Parent;
+    }
+
+    var path = directory is null
+        ? throw new InvalidOperationException("repository root not found for theme test")
+        : Path.Combine(directory.FullName, "apps", "windows", "CodexBridge.App", "Themes", fileName);
+    return XDocument.Load(path);
+}
+
+static HashSet<string> ResourceKeys(XDocument document)
+{
+    XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+    return document.Root?.Elements().Select(element => (string?)element.Attribute(x + "Key"))
+        .Where(key => key is not null)
+        .Cast<string>()
+        .ToHashSet(StringComparer.Ordinal)
+        ?? [];
 }
 
 sealed class TestScope : IAsyncDisposable

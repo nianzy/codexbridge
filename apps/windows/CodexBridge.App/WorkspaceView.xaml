@@ -1,9 +1,9 @@
 <UserControl x:Class="CodexBridge.App.WorkspaceView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Border Padding="24" Background="{StaticResource Background}">
+    <Border Padding="24" Background="{DynamicResource Background}">
         <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
             <TextBlock Text="Workspace Explorer" FontFamily="Segoe UI Semibold" FontSize="20" />
-            <ListBox Grid.Row="1" ItemsSource="{Binding Workspaces}" SelectedItem="{Binding WorkspaceSelection, Mode=TwoWay}" Margin="0,16,0,16" BorderThickness="0" ItemContainerStyle="{StaticResource SessionListItemStyle}">
-                <ListBox.ItemTemplate><DataTemplate><StackPanel><TextBlock Text="{Binding Name}" FontFamily="Segoe UI Semibold"/><TextBlock Text="{Binding Path}" Foreground="{StaticResource TextSecondary}" FontSize="12"/></StackPanel></DataTemplate></ListBox.ItemTemplate>
+            <ListBox Grid.Row="1" ItemsSource="{Binding Workspaces}" SelectedItem="{Binding WorkspaceSelection, Mode=TwoWay}" Margin="0,16,0,16" BorderThickness="0" Background="{DynamicResource PanelBackground}" Foreground="{DynamicResource TextPrimary}" BorderBrush="{DynamicResource BorderBrush}" ItemContainerStyle="{StaticResource SessionListItemStyle}">
+                <ListBox.ItemTemplate><DataTemplate><StackPanel><TextBlock Text="{Binding Name}" FontFamily="Segoe UI Semibold" Foreground="{DynamicResource TextPrimary}"/><TextBlock Text="{Binding Path}" Foreground="{DynamicResource TextSecondary}" FontSize="12"/></StackPanel></DataTemplate></ListBox.ItemTemplate>
             </ListBox>
             <Button Grid.Row="2" Content="Add Workspace..." Click="AddWorkspaceClick" HorizontalAlignment="Left" Style="{StaticResource PrimaryButtonStyle}" Padding="14,7" />
         </Grid>

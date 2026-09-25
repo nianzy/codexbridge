@@ -1,15 +1,15 @@
 <UserControl x:Class="CodexBridge.App.SettingsView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Border Padding="24" Background="{StaticResource Background}">
+    <Border Padding="24" Background="{DynamicResource Background}">
         <StackPanel>
             <TextBlock Text="Settings" FontFamily="Segoe UI Semibold" FontSize="20" />
             <TextBlock Text="Codex" FontFamily="Segoe UI Semibold" FontSize="16" Margin="0,24,0,12" />
-            <TextBlock Text="Executable" Foreground="{StaticResource TextSecondary}" />
+            <TextBlock Text="Executable" Foreground="{DynamicResource TextSecondary}" />
             <TextBlock Text="{Binding Source.CodexExecutable}" TextWrapping="Wrap" Margin="0,4,0,12" />
-            <TextBlock Text="Codex Home" Foreground="{StaticResource TextSecondary}" />
+            <TextBlock Text="Codex Home" Foreground="{DynamicResource TextSecondary}" />
             <TextBlock Text="{Binding Source.CodexHome}" TextWrapping="Wrap" Margin="0,4,0,12" />
-            <TextBlock Text="Version" Foreground="{StaticResource TextSecondary}" />
+            <TextBlock Text="Version" Foreground="{DynamicResource TextSecondary}" />
             <TextBlock Text="{Binding Source.CodexVersion}" Margin="0,4,0,16" />
             <Button Content="Refresh" Command="{Binding RefreshCommand}" Style="{StaticResource SecondaryButtonStyle}" HorizontalAlignment="Left" />
             <TextBlock Text="Theme" FontFamily="Segoe UI Semibold" FontSize="16" Margin="0,28,0,8" />
@@ -19,12 +19,12 @@
                 <ComboBoxItem Content="Dark" Tag="Dark" />
             </ComboBox>
             <TextBlock Text="Workspace" FontFamily="Segoe UI Semibold" FontSize="16" Margin="0,28,0,8" />
-            <TextBlock Text="Default Workspace" Foreground="{StaticResource TextSecondary}" />
+            <TextBlock Text="Default Workspace" Foreground="{DynamicResource TextSecondary}" />
             <TextBlock Text="{Binding Source.SelectedWorkspace.Path}" TextWrapping="Wrap" Margin="0,4,0,0" />
-            <TextBlock Text="Default Export Folder" Foreground="{StaticResource TextSecondary}" Margin="0,12,0,0" />
+            <TextBlock Text="Default Export Folder" Foreground="{DynamicResource TextSecondary}" Margin="0,12,0,0" />
             <TextBlock Text="{Binding Source.SelectedWorkspace.Path, StringFormat={}{0}\docs\chatgpt}" TextWrapping="Wrap" Margin="0,4,0,0" />
             <TextBlock Text="Ignore folders" FontFamily="Segoe UI Semibold" FontSize="16" Margin="0,28,0,8" />
-            <TextBlock Text="{Binding Source.IgnoreFolders, StringFormat={}{0}}" Foreground="{StaticResource TextSecondary}" />
+            <TextBlock Text="{Binding Source.IgnoreFolders, StringFormat={}{0}}" Foreground="{DynamicResource TextSecondary}" />
             <CheckBox Content="Enable Git Integration" IsChecked="{Binding Source.EnableGitIntegration, Mode=TwoWay}" Margin="0,18,0,0" />
         </StackPanel>
     </Border>

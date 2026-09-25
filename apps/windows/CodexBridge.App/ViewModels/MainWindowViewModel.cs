@@ -245,8 +245,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     public string CodexStatusText
     {
         get => codexStatusText;
-        private set => SetProperty(ref codexStatusText, value);
+        private set
+        {
+            if (!SetProperty(ref codexStatusText, value)) return;
+            OnPropertyChanged(nameof(CodexStatusShort));
+        }
     }
+
+    public string CodexStatusShort => CodexStatusText.StartsWith("Connected", StringComparison.Ordinal) ? "Connected" : CodexStatusText;
 
     public string CodexErrorDetail
     {

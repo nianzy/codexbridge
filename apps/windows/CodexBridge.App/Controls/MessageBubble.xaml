@@ -11,12 +11,12 @@
                 <ColumnDefinition Width="3*" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
-            <Border Grid.Column="0" MaxWidth="900" HorizontalAlignment="Left" Background="{StaticResource UserBubbleBrush}" CornerRadius="8" Padding="12">
+            <Border Grid.Column="0" MaxWidth="900" HorizontalAlignment="Left" Background="{DynamicResource UserBubbleBrush}" CornerRadius="8" Padding="12">
                 <StackPanel>
                     <DockPanel Margin="0,0,0,7">
                         <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" VerticalAlignment="Center" Margin="0,0,8,0" />
                         <TextBlock Text="{Binding UserLabel}" FontFamily="Segoe UI Semibold" />
-                        <TextBlock Text="{Binding TimestampText}" Foreground="{StaticResource TextSecondary}" FontSize="11" HorizontalAlignment="Right" />
+                        <TextBlock Text="{Binding TimestampText}" Foreground="{DynamicResource TextSecondary}" FontSize="11" HorizontalAlignment="Right" />
                     </DockPanel>
                     <controls:MarkdownText Text="{Binding Turn.User.Text, Mode=OneWay}" />
                 </StackPanel>
@@ -28,11 +28,11 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="3*" />
             </Grid.ColumnDefinitions>
-            <Border Grid.Column="1" MaxWidth="900" HorizontalAlignment="Right" Background="{StaticResource AssistantBubbleBrush}" CornerRadius="8" Padding="12">
+            <Border Grid.Column="1" MaxWidth="900" HorizontalAlignment="Right" Background="{DynamicResource AssistantBubbleBrush}" CornerRadius="8" Padding="12">
                 <StackPanel>
                     <DockPanel Margin="0,0,0,7">
                         <TextBlock Text="{Binding AssistantLabel}" FontFamily="Segoe UI Semibold" />
-                        <TextBlock Text="{Binding TimestampText}" Foreground="{StaticResource TextSecondary}" FontSize="11" HorizontalAlignment="Right" />
+                        <TextBlock Text="{Binding TimestampText}" Foreground="{DynamicResource TextSecondary}" FontSize="11" HorizontalAlignment="Right" />
                     </DockPanel>
                     <controls:MarkdownText Text="{Binding Turn.Assistant.Text, Mode=OneWay, TargetNullValue=（尚无回复）}" />
                 </StackPanel>

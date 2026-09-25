@@ -1,7 +1,7 @@
 <UserControl x:Class="CodexBridge.App.Controls.StatusBadge"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Border Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="12" Padding="10,5">
+    <Border Background="{DynamicResource PanelBackground}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="12" Padding="10,5">
         <Border.ToolTip>
             <StackPanel>
                 <TextBlock Text="{Binding CodexExecutable, StringFormat=Executable：{0}}" />
@@ -14,22 +14,22 @@
             <Ellipse Width="8" Height="8" VerticalAlignment="Center" Margin="0,0,7,0">
                 <Ellipse.Style>
                     <Style TargetType="Ellipse">
-                        <Setter Property="Fill" Value="{StaticResource SuccessBrush}" />
+                        <Setter Property="Fill" Value="{DynamicResource SuccessBrush}" />
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding DataContext.CodexStatusText, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="Error">
-                                <Setter Property="Fill" Value="{StaticResource ErrorBrush}" />
+                                <Setter Property="Fill" Value="{DynamicResource ErrorBrush}" />
                             </DataTrigger>
                             <DataTrigger Binding="{Binding DataContext.CodexStatusText, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="Disconnected">
-                                <Setter Property="Fill" Value="#98A2B3" />
+                                <Setter Property="Fill" Value="{DynamicResource TextSecondary}" />
                             </DataTrigger>
                             <DataTrigger Binding="{Binding DataContext.CodexStatusText, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="Not found">
-                                <Setter Property="Fill" Value="{StaticResource ErrorBrush}" />
+                                <Setter Property="Fill" Value="{DynamicResource ErrorBrush}" />
                             </DataTrigger>
                         </Style.Triggers>
                     </Style>
                 </Ellipse.Style>
             </Ellipse>
-            <TextBlock Text="{Binding CodexStatusText}" FontSize="12" />
+            <TextBlock Text="{Binding CodexStatusShort}" FontSize="12" />
         </StackPanel>
     </Border>
 </UserControl>

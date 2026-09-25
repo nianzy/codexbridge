@@ -5,8 +5,8 @@
         Title="Codex Bridge"
         Width="1280"
         Height="800"
-        MinWidth="1200"
-        MinHeight="700"
+        MinWidth="1280"
+        MinHeight="760"
         PreviewKeyDown="OnPreviewKeyDown">
     <Grid>
         <Grid.RowDefinitions>
@@ -15,40 +15,28 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <Border Grid.Row="0" Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
+        <Border Grid.Row="0" Background="{DynamicResource PanelBackground}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1">
             <Grid Margin="20,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="Codex Bridge" FontFamily="Segoe UI Semibold" FontSize="16" />
-                    <TextBlock Text="ChatGPT + Codex" Foreground="{StaticResource TextSecondary}" Margin="16,2,0,0" />
-                    <TextBlock Text="{Binding ProjectPath, StringFormat= · {0}}" Foreground="{StaticResource TextSecondary}" Margin="16,2,0,0" TextTrimming="CharacterEllipsis" />
-                    <ComboBox ItemsSource="{Binding Workspaces}" SelectedItem="{Binding WorkspaceSelection, Mode=TwoWay}" DisplayMemberPath="Name" Width="180" Margin="16,0,0,0" ToolTip="Workspace" />
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" MinWidth="240">
+                    <TextBlock Text="Codex Bridge" FontFamily="Segoe UI Semibold" FontSize="16" Foreground="{DynamicResource TextPrimary}" />
+                    <TextBlock Text="ChatGPT + Codex" Foreground="{DynamicResource TextSecondary}" Margin="16,2,0,0" />
+                    <ComboBox ItemsSource="{Binding Workspaces}" SelectedItem="{Binding WorkspaceSelection, Mode=TwoWay}" DisplayMemberPath="Name" MinWidth="120" MaxWidth="220" Width="180" Margin="16,0,0,0" ToolTip="{Binding ProjectPath}" />
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,18,0">
-                    <TextBlock Text="Threads: " Foreground="{StaticResource TextSecondary}" />
+                    <TextBlock Text="Threads: " Foreground="{DynamicResource TextSecondary}" />
                     <TextBlock Text="{Binding CodexThreads.Count}" Margin="0,0,12,0" />
-                    <TextBlock Text="Models: " Foreground="{StaticResource TextSecondary}" />
+                    <TextBlock Text="Models: " Foreground="{DynamicResource TextSecondary}" />
                     <TextBlock Text="{Binding CodexModelCount}" />
                 </StackPanel>
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                     <controls:StatusBadge VerticalAlignment="Center" />
                     <Button Content="⚙ Settings" Click="OpenSettingsClick" Style="{StaticResource SecondaryButtonStyle}" Padding="10,5" Margin="8,0,0,0" />
                     <Button Content="Workspace" Click="OpenWorkspaceClick" Style="{StaticResource SecondaryButtonStyle}" Padding="10,5" Margin="8,0,0,0" />
-                    <Expander IsExpanded="{Binding CodexDetailsExpanded}" Margin="8,0,0,0" VerticalAlignment="Center" ToolTip="Codex 详情">
-                        <Expander.Header><TextBlock Text="详情" Foreground="{StaticResource TextSecondary}" /></Expander.Header>
-                        <Border Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Padding="12" Margin="0,4,0,0">
-                            <StackPanel>
-                                <TextBlock Text="{Binding CodexVersion, StringFormat=版本：{0}}" />
-                                <TextBlock Text="{Binding CodexHome, StringFormat=Home：{0}}" />
-                                <TextBlock Text="{Binding CodexThreads.Count, StringFormat=Threads：{0}}" />
-                                <TextBlock Text="{Binding CodexModelCount, StringFormat=Models：{0}}" />
-                            </StackPanel>
-                        </Border>
-                    </Expander>
                 </StackPanel>
             </Grid>
         </Border>
@@ -61,36 +49,46 @@
                 <ColumnDefinition Width="5" />
                 <ColumnDefinition x:Name="RightPanelColumn" Width="360" MinWidth="300" />
             </Grid.ColumnDefinitions>
-            <Grid Grid.Column="0"><Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="260"/><RowDefinition Height="220"/></Grid.RowDefinitions>
+            <Grid Grid.Column="0"><Grid.RowDefinitions><RowDefinition Height="7*"/><RowDefinition Height="5"/><RowDefinition Height="8*"/><RowDefinition Height="5"/><RowDefinition Height="5*"/></Grid.RowDefinitions>
                 <controls:SessionList x:Name="SessionListControl" SourceIndex="{Binding SourceIndex, Mode=TwoWay}" />
-                <controls:ProjectExplorer Grid.Row="1" DataContext="{Binding}" />
-                <controls:GitStatusView Grid.Row="2" DataContext="{Binding}" />
+                <GridSplitter Grid.Row="1" Height="5" HorizontalAlignment="Stretch" Background="{DynamicResource BorderBrush}" ShowsPreview="True" />
+                <controls:ProjectExplorer Grid.Row="2" DataContext="{Binding}" Margin="0,6,0,0" />
+                <GridSplitter Grid.Row="3" Height="5" HorizontalAlignment="Stretch" Background="{DynamicResource BorderBrush}" ShowsPreview="True" />
+                <controls:GitStatusView Grid.Row="4" DataContext="{Binding}" />
             </Grid>
-            <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="{StaticResource BorderBrush}" ShowsPreview="True" />
+            <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="{DynamicResource BorderBrush}" ShowsPreview="True" />
 
-            <Grid Grid.Column="2" Background="{StaticResource Background}">
+            <Grid Grid.Column="2" Background="{DynamicResource Background}">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
-                    <DockPanel Margin="24,18,24,8">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="Conversation" FontFamily="Segoe UI Semibold" FontSize="16" />
-                            <TextBlock Text="·" Foreground="{StaticResource TextSecondary}" Margin="8,2,4,0" />
-                            <TextBlock Text="{Binding ActiveSourceLabel}" Foreground="{StaticResource TextSecondary}" Margin="0,2,0,0" />
-                            <TextBlock Text="{Binding CurrentSessionTitle}" FontFamily="Segoe UI Semibold" Margin="12,2,0,0" TextTrimming="CharacterEllipsis" />
-                            <TextBlock Text="{Binding CurrentSessionUpdatedAt, StringFormat= · {0}}" Foreground="{StaticResource TextSecondary}" Margin="8,2,0,0" />
-                            <TextBlock Text="{Binding SelectedWorkspace.Name, StringFormat= · Workspace: {0}}" Foreground="{StaticResource TextSecondary}" Margin="8,2,0,0" />
-                            <TextBlock Text="{Binding ProjectFileCount, StringFormat= · Files: {0}}" Foreground="{StaticResource TextSecondary}" Margin="8,2,0,0" />
-                            <TextBlock Text="{Binding GitBranch, StringFormat= · {0}}" Foreground="{StaticResource TextSecondary}" Margin="8,2,0,0" />
-                            <TextBlock Text="{Binding GitModifiedCount, StringFormat= · Modified: {0}}" Foreground="{StaticResource TextSecondary}" Margin="8,2,0,0" />
+                    <Grid Margin="24,18,24,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" MinWidth="0" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Grid Grid.Column="0" MinWidth="0" Margin="0,0,12,0">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid Grid.Row="0" MinWidth="0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" MinWidth="0" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Conversation" FontFamily="Segoe UI Semibold" FontSize="16" Foreground="{DynamicResource TextPrimary}" />
+                                <TextBlock Grid.Column="1" Text="{Binding CurrentSessionTitle}" FontFamily="Segoe UI Semibold" Foreground="{DynamicResource TextPrimary}" Margin="16,0,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding CurrentSessionTitle}" HorizontalAlignment="Stretch" />
+                            </Grid>
+                            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,4"><TextBlock Text="{Binding ActiveSourceLabel}" Foreground="{DynamicResource TextSecondary}" /><TextBlock Text="{Binding CurrentSessionUpdatedAt}" Foreground="{DynamicResource TextSecondary}" Margin="14,0,0,0" /><TextBlock Text="{Binding SelectedWorkspace.Name, StringFormat=Workspace: {0}}" Foreground="{DynamicResource TextSecondary}" Margin="14,0,0,0" MaxWidth="180" TextTrimming="CharacterEllipsis" ToolTip="{Binding SelectedWorkspace.Name}" /><TextBlock Text="{Binding GitBranch}" Foreground="{DynamicResource TextSecondary}" Margin="14,0,0,0" /></StackPanel>
+                        </Grid>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button Content="Refresh" Command="{Binding RefreshActiveCommand}" Style="{StaticResource SecondaryButtonStyle}" Padding="12,5" MinWidth="78" HorizontalContentAlignment="Center" Margin="0,0,8,0" />
+                            <Button Content="Open ChatGPT" Command="{Binding OpenChatGptCommand}" Style="{StaticResource PrimaryButtonStyle}" Padding="12,5" MinWidth="116" HorizontalContentAlignment="Center" />
+                            <Button Content="Export Draft" Command="{Binding ExportDraftCommand}" Style="{StaticResource SecondaryButtonStyle}" Padding="12,5" MinWidth="108" HorizontalContentAlignment="Center" Margin="8,0,0,0" />
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                            <Button Content="Refresh" Command="{Binding RefreshActiveCommand}" Style="{StaticResource SecondaryButtonStyle}" Padding="12,5" Margin="0,0,8,0" />
-                            <Button Content="Open ChatGPT" Command="{Binding OpenChatGptCommand}" Style="{StaticResource PrimaryButtonStyle}" Padding="12,5" />
-                            <Button Content="Export Draft" Command="{Binding ExportDraftCommand}" Style="{StaticResource SecondaryButtonStyle}" Padding="12,5" Margin="8,0,0,0" />
-                        </StackPanel>
-                    </DockPanel>
+                    </Grid>
                     <ScrollViewer x:Name="ConversationScrollViewer" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                         <ItemsControl ItemsSource="{Binding Turns}">
                             <ItemsControl.ItemTemplate>
@@ -101,18 +99,18 @@
                         </ItemsControl>
                     </ScrollViewer>
             </Grid>
-            <GridSplitter Grid.Column="3" Width="5" HorizontalAlignment="Stretch" Background="{StaticResource BorderBrush}" ShowsPreview="True" />
-            <Grid Grid.Column="4"><Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="*"/><RowDefinition Height="340"/></Grid.RowDefinitions>
-                <controls:FilePreview Grid.Row="0" />
-                <controls:DiffView Grid.Row="1" />
+            <GridSplitter Grid.Column="3" Width="5" HorizontalAlignment="Stretch" Background="{DynamicResource BorderBrush}" ShowsPreview="True" />
+            <Grid Grid.Column="4"><Grid.RowDefinitions><RowDefinition Height="9*"/><RowDefinition Height="5"/><RowDefinition Height="11*"/></Grid.RowDefinitions>
+                <TabControl Grid.Row="0"><TabItem Header="File"><controls:FilePreview /></TabItem><TabItem Header="Diff"><controls:DiffView /></TabItem></TabControl>
+                <GridSplitter Grid.Row="1" Height="5" HorizontalAlignment="Stretch" Background="{DynamicResource BorderBrush}" ShowsPreview="True" />
                 <TabControl Grid.Row="2"><TabItem Header="Draft"><controls:DraftPanel x:Name="DraftPanelControl" /></TabItem><TabItem Header="Context"><controls:ContextPanel /></TabItem></TabControl>
             </Grid>
         </Grid>
 
-        <Border Grid.Row="2" Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="20,7">
+        <Border Grid.Row="2" Background="{DynamicResource PanelBackground}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="20,7">
             <StackPanel>
-                <TextBlock Text="{Binding StatusText}" Foreground="{StaticResource TextSecondary}" />
-                <TextBlock Text="{Binding CodexErrorDetail}" Foreground="{StaticResource ErrorBrush}" TextWrapping="Wrap" Margin="0,3,0,0" />
+                <TextBlock Text="{Binding StatusText}" Foreground="{DynamicResource TextSecondary}" />
+                <TextBlock Text="{Binding CodexErrorDetail}" Foreground="{DynamicResource ErrorBrush}" TextWrapping="Wrap" Margin="0,3,0,0" />
             </StackPanel>
         </Border>
     </Grid>
