@@ -1,4 +1,6 @@
 using System.IO;
+using System.Text;
+using System.Windows;
 using CodexBridge.App.Infrastructure;
 using CodexBridge.App.ViewModels;
 using CodexBridge.Core.Capture;
@@ -19,6 +21,14 @@ var tests = new (string Name, Func<Task> Test)[]
     ("Codex refresh preserves exception detail", CodexRefreshPreservesExceptionDetailAsync),
     ("Codex error does not clear ChatGPT conversations", CodexErrorDoesNotClearChatGptConversationsAsync),
     ("faulted Codex refresh recreates client", FaultedCodexRefreshRecreatesClientAsync),
+    ("session explorer source and workspace filters", SessionExplorerFiltersAsync),
+    ("workspace picker add normalizes and persists paths", WorkspacePickerAddAsync),
+    ("workspace switching commits or rolls back atomically", WorkspaceSwitchIsAtomicAsync),
+    ("context pack renders all sections in order", ContextPackRendersAsync),
+    ("context pack keys distinguish same titles", ContextPackKeysAreDistinctAsync),
+    ("context pack empty render is safe", ContextPackEmptyRenderAsync),
+    ("context pack size boundaries classify correctly", ContextPackSizeClassificationAsync),
+    ("context pack character estimate matches items", ContextPackCharacterEstimateAsync),
 };
 
 var failures = 0;
@@ -172,6 +182,7 @@ static async Task CodexRefreshConnectsAndFillsCollectionAsync()
     Assert(viewModel.CodexStatusText.StartsWith("Connected", StringComparison.Ordinal), "successful refresh did not connect");
     Assert(viewModel.CodexThreads.Count == 1, "successful refresh did not populate the Codex collection");
     Assert(string.IsNullOrEmpty(viewModel.CodexErrorDetail), "successful refresh retained an error detail");
+    Assert(viewModel.StatusText != "Loading…", "successful Codex refresh left the global status loading");
 }
 
 static async Task CodexRefreshPreservesExceptionDetailAsync()
@@ -187,6 +198,7 @@ static async Task CodexRefreshPreservesExceptionDetailAsync()
     Assert(viewModel.CodexErrorDetail.Contains("System.InvalidOperationException", StringComparison.Ordinal), "exception type was lost");
     Assert(viewModel.CodexErrorDetail.Contains("diagnostic fixture", StringComparison.Ordinal), "exception message was lost");
     Assert(viewModel.CodexErrorDetail.Contains("inner fixture", StringComparison.Ordinal), "inner exception message was lost");
+    Assert(viewModel.StatusText != "Loading…", "failed Codex refresh left the global status loading");
 }
 
 static async Task CodexErrorDoesNotClearChatGptConversationsAsync()
@@ -232,12 +244,167 @@ static async Task FaultedCodexRefreshRecreatesClientAsync()
     Assert(oldClient.WasDisposed, "old faulted client was not disposed");
 }
 
+static async Task SessionExplorerFiltersAsync()
+{
+    await using var scope = await TestScope.CreateAsync();
+    Environment.SetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH", Path.Combine(scope.Root, "session-workspaces.json"));
+    await using var importer = new CaptureInboxImporter(scope.Repository, inboxDirectory: scope.Inbox);
+    await using var client = FakeCodexClient.Success();
+    await using var viewModel = new MainWindowViewModel(scope.Repository, importer, client);
+    await scope.Repository.SaveAsync(new CaptureValidator().Validate(CaptureJson.Serialize(LoadFixture())));
+    await viewModel.RefreshAsync();
+    viewModel.SessionFilter = "ChatGPT";
+    Assert(viewModel.ConversationsView.Cast<ConversationListItemViewModel>().Count() == 1, "ChatGPT session was hidden while workspace filter was off");
+    viewModel.WorkspaceOnly = true;
+    Assert(viewModel.ConversationsView.Cast<ConversationListItemViewModel>().Count() == 0, "unassociated ChatGPT session was not hidden by workspace filter");
+    Assert(viewModel.ChatGptEmptyText == "No sessions associated with this workspace", "workspace empty-state text is misleading");
+    viewModel.WorkspaceOnly = false;
+    var workspace = viewModel.SelectedWorkspace ?? new WorkspaceItem("fixture", Environment.CurrentDirectory, DateTimeOffset.UtcNow);
+    var workspacePath = Path.GetFullPath(workspace.Path);
+    foreach (var thread in new[]
+    {
+        new CodexThreadListItemViewModel(new CodexThreadSummary("parent", "Parent", "", Path.GetDirectoryName(workspacePath), null, null, null, false, null)),
+        new CodexThreadListItemViewModel(new CodexThreadSummary("root", "Root", "", workspacePath, null, null, null, false, null)),
+        new CodexThreadListItemViewModel(new CodexThreadSummary("child", "Child", "", Path.Combine(workspacePath, "apps"), null, null, null, false, null)),
+    }) viewModel.CodexThreads.Add(thread);
+    viewModel.SessionFilter = "Codex";
+    Assert(viewModel.CodexThreadsView.Cast<CodexThreadListItemViewModel>().Count() == 3, "workspace off did not show all Codex threads");
+    viewModel.WorkspaceOnly = true;
+    Assert(viewModel.CodexThreadsView.Cast<CodexThreadListItemViewModel>().Count() == 2, "workspace filter did not match root and child cwd");
+    viewModel.SessionSearchText = "Child";
+    Assert(viewModel.CodexThreadsView.Cast<CodexThreadListItemViewModel>().Count() == 1, "search and workspace filters did not combine");
+    viewModel.SessionFilter = "ChatGPT";
+    Assert(viewModel.CodexThreadsView.Cast<CodexThreadListItemViewModel>().Count() == 0, "ChatGPT source filter leaked Codex threads");
+    viewModel.SessionFilter = "Codex";
+    viewModel.SessionSearchText = string.Empty;
+    viewModel.WorkspaceOnly = false;
+    Assert(viewModel.CodexThreadsView.Cast<CodexThreadListItemViewModel>().Count() == 3, "workspace off did not restore all Codex threads");
+}
+
+static async Task WorkspacePickerAddAsync()
+{
+    var previousOverride = Environment.GetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH");
+    try
+    {
+        await using var scope = await TestScope.CreateAsync();
+        var workspaceStorePath = Path.Combine(scope.Root, "workspaces.json");
+        Environment.SetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH", workspaceStorePath);
+        await using var importer = new CaptureInboxImporter(scope.Repository, inboxDirectory: scope.Inbox);
+        await using var client = FakeCodexClient.Success();
+        await using var viewModel = new MainWindowViewModel(scope.Repository, importer, client);
+        var addedPath = Path.Combine(scope.Root, "AddedWorkspace");
+        Directory.CreateDirectory(addedPath);
+
+        Assert(viewModel.AddWorkspaceFromPath(addedPath + Path.DirectorySeparatorChar), "valid workspace was not added");
+        var count = viewModel.Workspaces.Count;
+        Assert(!viewModel.AddWorkspaceFromPath(addedPath.ToUpperInvariant()), "duplicate workspace path was added");
+        Assert(viewModel.Workspaces.Count == count, "duplicate workspace changed the list");
+        Assert(!viewModel.AddWorkspaceFromPath(Path.Combine(scope.Root, "missing")), "missing workspace was added");
+        Assert(WorkspaceStore.Load().Any(item => string.Equals(item.Path, Path.GetFullPath(addedPath), StringComparison.OrdinalIgnoreCase)), "workspace was not persisted");
+    }
+    finally
+    {
+        Environment.SetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH", previousOverride);
+    }
+}
+
+static async Task WorkspaceSwitchIsAtomicAsync()
+{
+    var previousOverride = Environment.GetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH");
+    try
+    {
+        await using var scope = await TestScope.CreateAsync();
+        Environment.SetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH", Path.Combine(scope.Root, "workspaces.json"));
+        await using var importer = new CaptureInboxImporter(scope.Repository, inboxDirectory: scope.Inbox);
+        await using var client = FakeCodexClient.Success();
+        var current = new WorkspaceItem("current", scope.Root, DateTimeOffset.UtcNow);
+        var targetPath = Path.Combine(scope.Root, "target");
+        Directory.CreateDirectory(targetPath);
+        var target = new WorkspaceItem("target", targetPath, DateTimeOffset.UtcNow);
+        await using var cancelled = new MainWindowViewModel(scope.Repository, importer, client, confirmWorkspaceSwitch: () => MessageBoxResult.Cancel);
+        cancelled.Workspaces.Add(current);
+        cancelled.Workspaces.Add(target);
+        Assert(cancelled.TrySwitchWorkspace(current, requireConfirmation: false), "initial workspace setup failed");
+        cancelled.ContextItems.Add(new ContextPackItem("Note", "keep", "test", "content", "keep", 0, "keep"));
+        Assert(!cancelled.TrySwitchWorkspace(target), "cancelled workspace switch committed");
+        Assert(cancelled.SelectedWorkspace?.Path == current.Path && cancelled.ContextItems.Count == 1, "cancel did not preserve workspace and context");
+
+        await using var committed = new MainWindowViewModel(scope.Repository, importer, FakeCodexClient.Success(), confirmWorkspaceSwitch: () => MessageBoxResult.OK);
+        committed.Workspaces.Add(current);
+        committed.Workspaces.Add(target);
+        Assert(committed.TrySwitchWorkspace(current, requireConfirmation: false), "second initial workspace setup failed");
+        committed.ContextItems.Add(new ContextPackItem("Note", "clear", "test", "content", "clear", 0, "clear"));
+        Assert(committed.TrySwitchWorkspace(target), "confirmed workspace switch failed");
+        Assert(committed.SelectedWorkspace?.Path == target.Path && committed.ContextItems.Count == 0, "successful switch did not commit atomically");
+
+        var missing = new WorkspaceItem("missing", Path.Combine(scope.Root, "missing"), DateTimeOffset.UtcNow);
+        committed.ContextItems.Add(new ContextPackItem("Note", "keep", "test", "content", "keep2", 0, "keep2"));
+        Assert(!committed.TrySwitchWorkspace(missing), "missing workspace switch succeeded");
+        Assert(committed.SelectedWorkspace?.Path == target.Path && committed.ContextItems.Count == 1, "failed switch did not roll back");
+    }
+    finally
+    {
+        Environment.SetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH", previousOverride);
+    }
+}
+
 static void Assert(bool condition, string message)
 {
     if (!condition)
     {
         throw new InvalidOperationException(message);
     }
+}
+
+static Task ContextPackRendersAsync()
+{
+    var service = new ContextPackService();
+    var workspace = new WorkspaceItem("fixture", Path.GetTempPath(), DateTimeOffset.UtcNow);
+    var items = new[]
+    {
+        new ContextPackItem("ChatGPTTurn", "Turn 3", "ChatGPT", "user", "c:3", 0, "1"),
+        new ContextPackItem("CodexTurn", "Turn 5", "Codex", "codex", "t:5", 1, "2"),
+        new ContextPackItem("ProjectFile", "README.md", "Workspace", "file", "README.md", 2, "3"),
+        new ContextPackItem("GitDiff", "README.md", "Git", "diff", "README.md", 3, "4"),
+        new ContextPackItem("Note", "ui.md", "Notes", "note", "ui.md", 4, "5"),
+    };
+    var markdown = service.RenderMarkdown(service.Create("Context Pack", workspace, items), "main", 2);
+    Assert(markdown.IndexOf("## ChatGPT Context", StringComparison.Ordinal) < markdown.IndexOf("## Codex Context", StringComparison.Ordinal), "context section order mismatch");
+    Assert(markdown.Contains("## Project Files") && markdown.Contains("## Git Diffs") && markdown.Contains("## Notes"), "context sections missing");
+    return Task.CompletedTask;
+}
+
+static Task ContextPackKeysAreDistinctAsync()
+{
+    var a = ContextPackService.CreateKey("ProjectFile", "Workspace", "README.md|1", "same");
+    var b = ContextPackService.CreateKey("Note", "Notes", "README.md|1", "same");
+    Assert(a != b, "different context types were deduplicated");
+    return Task.CompletedTask;
+}
+
+static Task ContextPackEmptyRenderAsync()
+{
+    var service = new ContextPackService();
+    var pack = service.Create("Context Pack", new WorkspaceItem("fixture", Path.GetTempPath(), DateTimeOffset.UtcNow), []);
+    Assert(service.RenderMarkdown(pack, "main", 0).Contains("# Context Pack"), "empty context render failed");
+    return Task.CompletedTask;
+}
+
+static Task ContextPackSizeClassificationAsync()
+{
+    Assert(ContextPackService.ClassifySize(19999) == "Small", "19999 boundary");
+    Assert(ContextPackService.ClassifySize(20000) == "Medium", "20000 boundary");
+    Assert(ContextPackService.ClassifySize(80000) == "Medium", "80000 boundary");
+    Assert(ContextPackService.ClassifySize(80001) == "Large", "80001 boundary");
+    return Task.CompletedTask;
+}
+
+static Task ContextPackCharacterEstimateAsync()
+{
+    var service = new ContextPackService();
+    var pack = service.Create("Context Pack", new WorkspaceItem("fixture", Path.GetTempPath(), DateTimeOffset.UtcNow), [new ContextPackItem("Note", "n", "Notes", "abc", "n", 0, "n")]);
+    Assert(pack.EstimatedCharacters == 3, "character estimate mismatch");
+    return Task.CompletedTask;
 }
 
 sealed class TestScope : IAsyncDisposable

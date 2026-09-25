@@ -21,6 +21,7 @@ public partial class App : Application
         var repository = new SqliteConversationRepository();
         var importer = new CaptureInboxImporter(repository);
         var codexLog = new CodexAppLog();
+        var uiLog = new CodexAppLog(Path.Combine(CodexBridgeWindowsPaths.SupportDirectory, "Logs", "ui.log"));
         codexLog.Write($"process workingDirectory={Environment.CurrentDirectory}");
         codexLog.Write($"process USERPROFILE={Environment.GetEnvironmentVariable("USERPROFILE") ?? "(unset)"}");
         codexLog.Write($"process CODEX_HOME set={Environment.GetEnvironmentVariable("CODEX_HOME") is not null}");
@@ -31,8 +32,9 @@ public partial class App : Application
             importer,
             codexClient,
             codexLog,
-            () => new CodexAppServerClient(diagnostics: codexLog.Write));
-        var window = new MainWindow(viewModel);
+            () => new CodexAppServerClient(diagnostics: codexLog.Write),
+            uiLog);
+        var window = new MainWindow(viewModel, uiLog);
         MainWindow = window;
         window.Show();
     }

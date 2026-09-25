@@ -1,0 +1,7 @@
+<UserControl x:Class="CodexBridge.App.NotesView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid Margin="16"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <TextBlock Text="Notes" FontFamily="Segoe UI Semibold" FontSize="18" />
+        <ListBox Grid.Row="1" ItemsSource="{Binding Notes}" SelectedItem="{Binding SelectedNote, Mode=TwoWay}" Margin="0,12"><ListBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Name}" Padding="8"><TextBlock.ContextMenu><ContextMenu><MenuItem Header="Add to Context" Click="AddContextClick"/></ContextMenu></TextBlock.ContextMenu></TextBlock></DataTemplate></ListBox.ItemTemplate></ListBox>
+        <StackPanel Grid.Row="2" Orientation="Horizontal"><TextBox Text="{Binding NewNoteName, UpdateSourceTrigger=PropertyChanged}" Width="220" Padding="7"/><Button Content="New" Command="{Binding NewNoteCommand}" Margin="8,0,0,0" Padding="12,5"/><Button Content="Open" Command="{Binding OpenNoteCommand}" Margin="8,0,0,0" Padding="12,5"/><Button Content="Delete" Command="{Binding DeleteNoteCommand}" Margin="8,0,0,0" Padding="12,5"/></StackPanel>
+    </Grid>
+</UserControl>

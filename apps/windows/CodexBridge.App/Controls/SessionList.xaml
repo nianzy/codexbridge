@@ -1,0 +1,108 @@
+<UserControl x:Class="CodexBridge.App.Controls.SessionList"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Border Background="{StaticResource PanelBackground}"
+            BorderBrush="{StaticResource BorderBrush}"
+            BorderThickness="0,0,1,0">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <TextBlock Text="Sessions"
+                       FontFamily="Segoe UI Semibold"
+                       FontSize="16"
+                       Margin="16,18,16,12" />
+
+            <TextBox x:Name="SearchBox" Grid.Row="1" Margin="12,0,12,10" Padding="10,7" KeyDown="SearchBoxKeyDown"
+                     Text="{Binding SessionSearchText, UpdateSourceTrigger=PropertyChanged}"
+                     ToolTip="搜索标题或预览…"
+                     BorderBrush="{StaticResource BorderBrush}" />
+
+            <ComboBox Grid.Row="2" Margin="12,0,12,8" SelectedValue="{Binding SessionFilter, Mode=TwoWay}" SelectedValuePath="Tag">
+                <ComboBoxItem Content="All" Tag="All" />
+                <ComboBoxItem Content="ChatGPT" Tag="ChatGPT" />
+                <ComboBoxItem Content="Codex" Tag="Codex" />
+            </ComboBox>
+
+            <CheckBox Grid.Row="3" Margin="16,0,12,8" Content="Workspace only" IsChecked="{Binding WorkspaceOnly, Mode=TwoWay}" />
+
+            <Grid Grid.Row="4">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <StackPanel Orientation="Horizontal" Margin="16,8,12,6">
+                    <Ellipse Width="8" Height="8" Fill="#3182F6" VerticalAlignment="Center" />
+                    <TextBlock Text="ChatGPT" FontFamily="Segoe UI Semibold" Margin="8,0,0,0" />
+                    <TextBlock Text="{Binding Conversations.Count}"
+                               Foreground="{StaticResource TextSecondary}" />
+                </StackPanel>
+                <ListBox Grid.Row="1"
+                         ItemsSource="{Binding ConversationsView}"
+                         SelectedItem="{Binding SelectedConversation, Mode=TwoWay}"
+                         SelectionChanged="OnChatGptSelectionChanged"
+                         ItemContainerStyle="{StaticResource SessionListItemStyle}"
+                         BorderThickness="0"
+                         Background="Transparent"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel>
+                                <StackPanel.ContextMenu>
+                                    <ContextMenu><MenuItem Header="Copy title" Tag="title" Click="CopyItemClick" /><MenuItem Header="Copy ID" Tag="id" Click="CopyItemClick" /></ContextMenu>
+                                </StackPanel.ContextMenu>
+                                <TextBlock Text="{Binding Title}" FontFamily="Segoe UI Semibold" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{Binding Details}" FontSize="11" Foreground="{StaticResource TextSecondary}" TextTrimming="CharacterEllipsis" Margin="0,3,0,0" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+                    <TextBlock Text="{Binding ChatGptEmptyText}" Foreground="{StaticResource TextSecondary}" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding ConversationsView.IsEmpty}" Value="True"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+                </TextBlock>
+            </Grid>
+
+            <Grid Grid.Row="5">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <StackPanel Orientation="Horizontal" Margin="16,12,12,6">
+                    <Ellipse Width="8" Height="8" Fill="{StaticResource AccentBrush}" VerticalAlignment="Center" />
+                    <TextBlock Text="Codex" FontFamily="Segoe UI Semibold" Margin="8,0,0,0" />
+                    <TextBlock Text="{Binding CodexThreads.Count}"
+                               Foreground="{StaticResource TextSecondary}" />
+                </StackPanel>
+                <ListBox Grid.Row="1"
+                         ItemsSource="{Binding CodexThreadsView}"
+                         SelectedItem="{Binding SelectedCodexThread, Mode=TwoWay}"
+                         SelectionChanged="OnCodexSelectionChanged"
+                         ItemContainerStyle="{StaticResource SessionListItemStyle}"
+                         BorderThickness="0"
+                         Background="Transparent"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel>
+                                <StackPanel.ContextMenu>
+                                    <ContextMenu><MenuItem Header="Copy title" Tag="title" Click="CopyItemClick" /><MenuItem Header="Copy ID" Tag="id" Click="CopyItemClick" /></ContextMenu>
+                                </StackPanel.ContextMenu>
+                                <TextBlock Text="{Binding Title}" FontFamily="Segoe UI Semibold" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{Binding Details}" FontSize="11" Foreground="{StaticResource TextSecondary}" TextTrimming="CharacterEllipsis" Margin="0,3,0,0" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+                    <TextBlock Text="{Binding CodexEmptyText}" Foreground="{StaticResource TextSecondary}" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding CodexThreadsView.IsEmpty}" Value="True"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+                </TextBlock>
+            </Grid>
+        </Grid>
+    </Border>
+</UserControl>

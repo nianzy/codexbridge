@@ -1,0 +1,35 @@
+<UserControl x:Class="CodexBridge.App.Controls.StatusBadge"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Border Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="12" Padding="10,5">
+        <Border.ToolTip>
+            <StackPanel>
+                <TextBlock Text="{Binding CodexExecutable, StringFormat=Executable：{0}}" />
+                <TextBlock Text="{Binding CodexHome, StringFormat=Codex Home：{0}}" />
+                <TextBlock Text="{Binding CodexThreads.Count, StringFormat=Threads：{0}}" />
+                <TextBlock Text="{Binding CodexModelCount, StringFormat=Models：{0}}" />
+            </StackPanel>
+        </Border.ToolTip>
+        <StackPanel Orientation="Horizontal">
+            <Ellipse Width="8" Height="8" VerticalAlignment="Center" Margin="0,0,7,0">
+                <Ellipse.Style>
+                    <Style TargetType="Ellipse">
+                        <Setter Property="Fill" Value="{StaticResource SuccessBrush}" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding DataContext.CodexStatusText, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="Error">
+                                <Setter Property="Fill" Value="{StaticResource ErrorBrush}" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding DataContext.CodexStatusText, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="Disconnected">
+                                <Setter Property="Fill" Value="#98A2B3" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding DataContext.CodexStatusText, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="Not found">
+                                <Setter Property="Fill" Value="{StaticResource ErrorBrush}" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Ellipse.Style>
+            </Ellipse>
+            <TextBlock Text="{Binding CodexStatusText}" FontSize="12" />
+        </StackPanel>
+    </Border>
+</UserControl>

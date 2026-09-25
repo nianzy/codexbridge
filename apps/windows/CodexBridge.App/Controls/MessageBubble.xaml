@@ -1,0 +1,42 @@
+<UserControl x:Class="CodexBridge.App.Controls.MessageBubble"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:CodexBridge.App.Controls">
+    <StackPanel Margin="20,10">
+        <StackPanel.ContextMenu>
+            <ContextMenu><MenuItem Header="Copy Message" Click="CopyMessageClick"/><MenuItem Header="Copy Markdown" Click="CopyMarkdownClick"/><MenuItem Header="Add to Context" Click="AddContextClick"/><MenuItem Header="Export" Click="ExportClick"/></ContextMenu>
+        </StackPanel.ContextMenu>
+        <Grid Margin="0,0,0,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="3*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Border Grid.Column="0" MaxWidth="900" HorizontalAlignment="Left" Background="{StaticResource UserBubbleBrush}" CornerRadius="8" Padding="12">
+                <StackPanel>
+                    <DockPanel Margin="0,0,0,7">
+                        <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <TextBlock Text="{Binding UserLabel}" FontFamily="Segoe UI Semibold" />
+                        <TextBlock Text="{Binding TimestampText}" Foreground="{StaticResource TextSecondary}" FontSize="11" HorizontalAlignment="Right" />
+                    </DockPanel>
+                    <controls:MarkdownText Text="{Binding Turn.User.Text, Mode=OneWay}" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="3*" />
+            </Grid.ColumnDefinitions>
+            <Border Grid.Column="1" MaxWidth="900" HorizontalAlignment="Right" Background="{StaticResource AssistantBubbleBrush}" CornerRadius="8" Padding="12">
+                <StackPanel>
+                    <DockPanel Margin="0,0,0,7">
+                        <TextBlock Text="{Binding AssistantLabel}" FontFamily="Segoe UI Semibold" />
+                        <TextBlock Text="{Binding TimestampText}" Foreground="{StaticResource TextSecondary}" FontSize="11" HorizontalAlignment="Right" />
+                    </DockPanel>
+                    <controls:MarkdownText Text="{Binding Turn.Assistant.Text, Mode=OneWay, TargetNullValue=（尚无回复）}" />
+                </StackPanel>
+            </Border>
+        </Grid>
+    </StackPanel>
+</UserControl>
