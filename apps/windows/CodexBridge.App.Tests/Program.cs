@@ -1,4 +1,5 @@
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Xml.Linq;
 using System.Windows;
@@ -25,6 +26,11 @@ var tests = new (string Name, Func<Task> Test)[]
     ("session explorer source and workspace filters", SessionExplorerFiltersAsync),
     ("workspace picker add normalizes and persists paths", WorkspacePickerAddAsync),
     ("workspace switching commits or rolls back atomically", WorkspaceSwitchIsAtomicAsync),
+    ("workspace cancel restores ComboBox selection", WorkspaceCancelRestoresSelectionAsync),
+    ("workspace cancel preserves current state", WorkspaceCancelPreservesStateAsync),
+    ("workspace failure restores UI selection", WorkspaceFailureRestoresSelectionAsync),
+    ("workspace success commits UI selection", WorkspaceSuccessCommitsSelectionAsync),
+    ("workspace selection restore does not re-enter switch", WorkspaceRestoreDoesNotReenterAsync),
     ("context pack renders all sections in order", ContextPackRendersAsync),
     ("context pack keys distinguish same titles", ContextPackKeysAreDistinctAsync),
     ("context pack empty render is safe", ContextPackEmptyRenderAsync),
@@ -32,6 +38,39 @@ var tests = new (string Name, Func<Task> Test)[]
     ("context pack character estimate matches items", ContextPackCharacterEstimateAsync),
     ("theme shared styles remain outside color dictionaries", ThemeSharedStylesAreSeparatedAsync),
     ("light and dark theme keys are symmetric", ThemeColorKeysAreSymmetricAsync),
+    ("handoff templates render ordered sections", HandoffTemplatesRenderAsync),
+    ("handoff embeds context and git state", HandoffContextAndGitRenderAsync),
+    ("handoff keeps normal user task", HandoffNormalTaskAsync),
+    ("handoff removes attachment wrapper and path", HandoffAttachmentWrapperAsync),
+    ("handoff preserves request after wrapper", HandoffWrapperRequestAsync),
+    ("handoff rejects wrapper-only and giant task", HandoffUnsafeTaskAsync),
+    ("handoff request marker wins over attachment title", HandoffRequestMarkerWinsAsync),
+    ("handoff empty request marker never falls back", HandoffEmptyMarkerAsync),
+    ("handoff accepts markdown request marker", HandoffMarkdownMarkerAsync),
+    ("handoff uses final request marker", HandoffFinalMarkerAsync),
+    ("handoff request marker is case insensitive", HandoffCaseInsensitiveMarkerAsync),
+    ("handoff filters attachment path after marker", HandoffMarkerPathFilterAsync),
+    ("handoff generate clears stale task", HandoffGenerateClearsStaleTaskAsync),
+    ("handoff generate replaces stale task", HandoffGenerateReplacesTaskAsync),
+    ("handoff generate does not use empty selected attachments", HandoffGenerateEmptySelectionAsync),
+    ("handoff second generate clears first task", HandoffGenerateTwiceAsync),
+    ("clear selection clears every selected turn", ClearSelectionClearsSelectedTurnsAsync),
+    ("clear selection is safe when nothing is selected", ClearSelectionWithNothingSelectedAsync),
+    ("clipboard copy succeeds on first attempt", ClipboardCopySucceedsImmediatelyAsync),
+    ("clipboard copy retries transient contention", ClipboardCopyRetriesTransientContentionAsync),
+    ("clipboard copy stops after maximum attempts", ClipboardCopyStopsAtMaximumAttemptsAsync),
+    ("clipboard copy does not retry other COM errors", ClipboardCopyDoesNotRetryOtherComErrorsAsync),
+    ("clipboard copy preserves text", ClipboardCopyPreservesTextAsync),
+    ("clipboard busy then success stops immediately", ClipboardBusyThenSuccessStopsImmediatelyAsync),
+    ("clipboard success clears stale exception", ClipboardSuccessClearsStaleExceptionAsync),
+    ("clipboard side effect reports success", ClipboardSideEffectReportsSuccessAsync),
+    ("clipboard side effect verification polls through busy reads", ClipboardSideEffectVerificationPollsAsync),
+    ("clipboard verification match prevents another write", ClipboardVerificationMatchPreventsAnotherWriteAsync),
+    ("clipboard verification miss allows the next write", ClipboardVerificationMissAllowsNextWriteAsync),
+    ("clipboard all busy attempts remain failure", ClipboardAllBusyAttemptsRemainFailureAsync),
+    ("handoff copy success replaces stale failure", HandoffCopySuccessReplacesStaleFailureAsync),
+    ("handoff copy failure reports current reason", HandoffCopyFailureReportsCurrentReasonAsync),
+    ("handoff copy keeps latest status", HandoffCopyKeepsLatestStatusAsync),
 };
 
 var failures = 0;
@@ -351,6 +390,163 @@ static async Task WorkspaceSwitchIsAtomicAsync()
     }
 }
 
+static async Task WorkspaceCancelRestoresSelectionAsync()
+{
+    var previousOverride = Environment.GetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH");
+    try
+    {
+        await using var scope = await TestScope.CreateAsync();
+        Environment.SetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH", Path.Combine(scope.Root, "workspaces.json"));
+        await using var importer = new CaptureInboxImporter(scope.Repository, inboxDirectory: scope.Inbox);
+        await using var viewModel = new MainWindowViewModel(scope.Repository, importer, FakeCodexClient.Success(), confirmWorkspaceSwitch: () => MessageBoxResult.Cancel);
+        var current = new WorkspaceItem("current", scope.Root, DateTimeOffset.UtcNow);
+        var targetPath = Path.Combine(scope.Root, "target");
+        Directory.CreateDirectory(targetPath);
+        var target = new WorkspaceItem("target", targetPath, DateTimeOffset.UtcNow);
+        viewModel.Workspaces.Add(current);
+        viewModel.Workspaces.Add(target);
+        Assert(viewModel.TrySwitchWorkspace(current, requireConfirmation: false), "initial workspace setup failed");
+        viewModel.ContextItems.Add(new ContextPackItem("Note", "keep", "test", "content", "keep", 0, "keep"));
+
+        viewModel.WorkspaceSelection = target;
+
+        Assert(viewModel.WorkspaceSelection?.Path == current.Path, "cancel did not restore ComboBox selection");
+        Assert(viewModel.SelectedWorkspace?.Path == current.Path, "cancel changed committed workspace");
+    }
+    finally
+    {
+        Environment.SetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH", previousOverride);
+    }
+}
+
+static async Task WorkspaceCancelPreservesStateAsync()
+{
+    var previousOverride = Environment.GetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH");
+    try
+    {
+        await using var scope = await TestScope.CreateAsync();
+        Environment.SetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH", Path.Combine(scope.Root, "workspaces.json"));
+        await using var importer = new CaptureInboxImporter(scope.Repository, inboxDirectory: scope.Inbox);
+        await using var viewModel = new MainWindowViewModel(scope.Repository, importer, FakeCodexClient.Success(), confirmWorkspaceSwitch: () => MessageBoxResult.Cancel);
+        var current = new WorkspaceItem("current", scope.Root, DateTimeOffset.UtcNow);
+        var targetPath = Path.Combine(scope.Root, "target");
+        Directory.CreateDirectory(targetPath);
+        var target = new WorkspaceItem("target", targetPath, DateTimeOffset.UtcNow);
+        viewModel.Workspaces.Add(current);
+        viewModel.Workspaces.Add(target);
+        Assert(viewModel.TrySwitchWorkspace(current, requireConfirmation: false), "initial workspace setup failed");
+        viewModel.ContextItems.Add(new ContextPackItem("Note", "keep", "test", "content", "keep", 0, "keep"));
+        viewModel.HandoffTask = "keep handoff";
+        var projectRootPath = viewModel.ProjectRootItems.Single().FullPath;
+        var projectFileCount = viewModel.ProjectFileCount;
+
+        viewModel.WorkspaceSelection = target;
+
+        Assert(viewModel.ContextItems.Count == 1, "cancel cleared context");
+        Assert(viewModel.HandoffTask == "keep handoff", "cancel cleared handoff");
+        Assert(viewModel.ProjectRootItems.Single().FullPath == projectRootPath, "cancel changed Project Explorer");
+        Assert(viewModel.ProjectFileCount == projectFileCount, "cancel changed project file state");
+    }
+    finally
+    {
+        Environment.SetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH", previousOverride);
+    }
+}
+
+static async Task WorkspaceFailureRestoresSelectionAsync()
+{
+    var previousOverride = Environment.GetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH");
+    try
+    {
+        await using var scope = await TestScope.CreateAsync();
+        Environment.SetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH", Path.Combine(scope.Root, "workspaces.json"));
+        await using var importer = new CaptureInboxImporter(scope.Repository, inboxDirectory: scope.Inbox);
+        await using var viewModel = new MainWindowViewModel(scope.Repository, importer, FakeCodexClient.Success(), confirmWorkspaceSwitch: () => MessageBoxResult.OK);
+        var current = new WorkspaceItem("current", scope.Root, DateTimeOffset.UtcNow);
+        var missing = new WorkspaceItem("missing", Path.Combine(scope.Root, "missing"), DateTimeOffset.UtcNow);
+        viewModel.Workspaces.Add(current);
+        viewModel.Workspaces.Add(missing);
+        Assert(viewModel.TrySwitchWorkspace(current, requireConfirmation: false), "initial workspace setup failed");
+        viewModel.ContextItems.Add(new ContextPackItem("Note", "keep", "test", "content", "keep", 0, "keep"));
+
+        viewModel.WorkspaceSelection = missing;
+
+        Assert(viewModel.WorkspaceSelection?.Path == current.Path, "failed switch did not restore ComboBox selection");
+        Assert(viewModel.SelectedWorkspace?.Path == current.Path, "failed switch changed committed workspace");
+        Assert(viewModel.ContextItems.Count == 1, "failed switch cleared context");
+    }
+    finally
+    {
+        Environment.SetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH", previousOverride);
+    }
+}
+
+static async Task WorkspaceSuccessCommitsSelectionAsync()
+{
+    var previousOverride = Environment.GetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH");
+    try
+    {
+        await using var scope = await TestScope.CreateAsync();
+        Environment.SetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH", Path.Combine(scope.Root, "workspaces.json"));
+        await using var importer = new CaptureInboxImporter(scope.Repository, inboxDirectory: scope.Inbox);
+        await using var viewModel = new MainWindowViewModel(scope.Repository, importer, FakeCodexClient.Success(), confirmWorkspaceSwitch: () => MessageBoxResult.OK);
+        var current = new WorkspaceItem("current", scope.Root, DateTimeOffset.UtcNow);
+        var targetPath = Path.Combine(scope.Root, "target");
+        Directory.CreateDirectory(targetPath);
+        var target = new WorkspaceItem("target", targetPath, DateTimeOffset.UtcNow);
+        viewModel.Workspaces.Add(current);
+        viewModel.Workspaces.Add(target);
+        Assert(viewModel.TrySwitchWorkspace(current, requireConfirmation: false), "initial workspace setup failed");
+        viewModel.ContextItems.Add(new ContextPackItem("Note", "clear", "test", "content", "clear", 0, "clear"));
+        viewModel.HandoffTask = "clear handoff";
+
+        viewModel.WorkspaceSelection = target;
+
+        Assert(viewModel.WorkspaceSelection?.Path == targetPath, "successful switch did not commit ComboBox selection");
+        Assert(viewModel.SelectedWorkspace?.Path == targetPath, "successful switch did not commit workspace");
+        Assert(viewModel.ContextItems.Count == 0, "successful switch did not clear context");
+        Assert(string.IsNullOrEmpty(viewModel.HandoffTask), "successful switch did not clear handoff");
+    }
+    finally
+    {
+        Environment.SetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH", previousOverride);
+    }
+}
+
+static async Task WorkspaceRestoreDoesNotReenterAsync()
+{
+    var previousOverride = Environment.GetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH");
+    try
+    {
+        await using var scope = await TestScope.CreateAsync();
+        Environment.SetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH", Path.Combine(scope.Root, "workspaces.json"));
+        await using var importer = new CaptureInboxImporter(scope.Repository, inboxDirectory: scope.Inbox);
+        var confirmationCount = 0;
+        await using var viewModel = new MainWindowViewModel(scope.Repository, importer, FakeCodexClient.Success(), confirmWorkspaceSwitch: () =>
+        {
+            confirmationCount++;
+            return MessageBoxResult.Cancel;
+        });
+        var current = new WorkspaceItem("current", scope.Root, DateTimeOffset.UtcNow);
+        var targetPath = Path.Combine(scope.Root, "target");
+        Directory.CreateDirectory(targetPath);
+        var target = new WorkspaceItem("target", targetPath, DateTimeOffset.UtcNow);
+        viewModel.Workspaces.Add(current);
+        viewModel.Workspaces.Add(target);
+        Assert(viewModel.TrySwitchWorkspace(current, requireConfirmation: false), "initial workspace setup failed");
+        viewModel.ContextItems.Add(new ContextPackItem("Note", "keep", "test", "content", "keep", 0, "keep"));
+
+        viewModel.WorkspaceSelection = target;
+
+        Assert(confirmationCount == 1, "selection restore re-entered workspace switch");
+        Assert(viewModel.WorkspaceSelection?.Path == current.Path, "selection restore did not keep current workspace");
+    }
+    finally
+    {
+        Environment.SetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH", previousOverride);
+    }
+}
+
 static void Assert(bool condition, string message)
 {
     if (!condition)
@@ -431,6 +627,487 @@ static Task ThemeColorKeysAreSymmetricAsync()
     var darkKeys = ResourceKeys(LoadThemeDocument("DarkColors.xaml"));
     Assert(lightKeys.SetEquals(darkKeys), "Light and Dark color dictionaries do not expose the same keys");
     return Task.CompletedTask;
+}
+
+static Task HandoffTemplatesRenderAsync()
+{
+    foreach (var template in new[] { "Continue Task", "Debug Issue", "Review Changes", "Plan Next Step" })
+    {
+        var text = HandoffService.Render(new HandoffInput("Codex", template, "Fixture", "task", "state", "constraints", "next", "workspace", "C:\\workspace", "main", [], [], 0, false, true, false, false));
+        Assert(text.StartsWith("# Handoff", StringComparison.Ordinal), $"{template} missing header");
+        Assert(text.Contains("Target: Codex", StringComparison.Ordinal), $"{template} missing target");
+        Assert(text.IndexOf("## Current State", StringComparison.Ordinal) > 0 && text.Contains("## Constraints", StringComparison.Ordinal) || text.Contains("## Open Questions", StringComparison.Ordinal), $"{template} section order mismatch");
+    }
+    return Task.CompletedTask;
+}
+
+static Task HandoffContextAndGitRenderAsync()
+{
+    var text = HandoffService.Render(new HandoffInput("ChatGPT", "Continue Task", "Fixture", "task", "state", "constraints", "next", "workspace", "C:\\workspace", "main", [new GitChangedFile("M", "Program.cs")], [new ContextPackItem("ProjectFile", "README.md", "Workspace", "content", "README.md", 0, "key")], 4, true, true, true, true));
+    Assert(text.Contains("Target: ChatGPT", StringComparison.Ordinal), "handoff target missing");
+    Assert(text.Contains("## Important Context", StringComparison.Ordinal) && !text.Contains("# Context Pack", StringComparison.Ordinal), "context was wrapped with duplicate pack heading");
+    Assert(text.Contains("Branch: main", StringComparison.Ordinal) && text.Contains("- M Program.cs", StringComparison.Ordinal), "git state missing");
+    Assert(text.Contains("Files: 4", StringComparison.Ordinal), "project file summary missing");
+    return Task.CompletedTask;
+}
+
+static Task HandoffNormalTaskAsync()
+{
+    Assert(HandoffService.NormalizeUserTask("Please diagnose the startup crash.") == "Please diagnose the startup crash.", "normal task changed");
+    return Task.CompletedTask;
+}
+
+static Task HandoffAttachmentWrapperAsync()
+{
+    var input = "# Files pasted by the user:\n## attachment: C:\\fixture\\.codex\\attachments\\abc\\file.txt\nPasted text contains the user's request.";
+    var result = HandoffService.NormalizeUserTask(input);
+    Assert(!result.Contains("Files pasted", StringComparison.OrdinalIgnoreCase), "wrapper remained");
+    Assert(!result.Contains(".codex\\attachments", StringComparison.OrdinalIgnoreCase), "attachment path remained");
+    return Task.CompletedTask;
+}
+
+static Task HandoffWrapperRequestAsync()
+{
+    var input = "# Files pasted by the user:\nC:\\fixture\\.codex\\attachments\\abc\\file.txt\n## My request:\nPlease diagnose the project crash.";
+    Assert(HandoffService.NormalizeUserTask(input) == "Please diagnose the project crash.", "real request after wrapper was lost");
+    return Task.CompletedTask;
+}
+
+static Task HandoffUnsafeTaskAsync()
+{
+    var wrapperOnly = "# Files pasted by the user:\nC:\\fixture\\.codex\\attachments\\abc\\file.txt\nPasted text contains the user's request.";
+    Assert(HandoffService.NormalizeUserTask(wrapperOnly) == string.Empty, "wrapper-only task was not empty");
+    Assert(HandoffService.NormalizeUserTask(new string('x', 8001)) == string.Empty, "giant user turn was promoted to task");
+    return Task.CompletedTask;
+}
+
+static Task HandoffRequestMarkerWinsAsync()
+{
+    var input = "Files pasted by the user:\nOLD ATTACHMENT TITLE\nMy request:\nREAL REQUEST";
+    Assert(HandoffService.NormalizeUserTask(input) == "REAL REQUEST", "attachment title won over request marker");
+    return Task.CompletedTask;
+}
+
+static Task HandoffEmptyMarkerAsync()
+{
+    var input = "Files pasted by the user:\nOLD ATTACHMENT TITLE\nMy request:\n";
+    Assert(HandoffService.NormalizeUserTask(input) == string.Empty, "empty request marker fell back to attachment title");
+    return Task.CompletedTask;
+}
+
+static Task HandoffMarkdownMarkerAsync()
+{
+    var input = "# Files pasted by the user:\n# Old heading\n## My request:\nFix current bug";
+    Assert(HandoffService.NormalizeUserTask(input) == "Fix current bug", "markdown request marker was not recognized");
+    return Task.CompletedTask;
+}
+
+static Task HandoffFinalMarkerAsync()
+{
+    var input = "My request:\nold request\nwrapper\nMy request:\nnew request";
+    Assert(HandoffService.NormalizeUserTask(input) == "new request", "final request marker was not used");
+    return Task.CompletedTask;
+}
+
+static Task HandoffCaseInsensitiveMarkerAsync()
+{
+    Assert(HandoffService.NormalizeUserTask("MY REQUEST:\nFix this") == "Fix this", "case-insensitive request marker failed");
+    return Task.CompletedTask;
+}
+
+static Task HandoffMarkerPathFilterAsync()
+{
+    var input = "My request:\nC:\\fixture\\.codex\\attachments\\a.txt\nFix this";
+    var result = HandoffService.NormalizeUserTask(input);
+    Assert(result == "Fix this" && !result.Contains("attachments", StringComparison.OrdinalIgnoreCase), "attachment path after marker remained");
+    return Task.CompletedTask;
+}
+
+static async Task HandoffGenerateClearsStaleTaskAsync()
+{
+    await using var scope = await TestScope.CreateAsync();
+    await using var importer = new CaptureInboxImporter(scope.Repository, inboxDirectory: scope.Inbox);
+    await using var viewModel = new MainWindowViewModel(scope.Repository, importer, FakeCodexClient.Success());
+    viewModel.HandoffTask = "OLD TASK";
+    viewModel.Turns.Add(HandoffTurn("Files pasted by the user:\nold attachment\nMy request:\n"));
+    viewModel.GenerateHandoffCommand.Execute(null);
+    Assert(viewModel.HandoffTask == string.Empty, "generate retained stale task");
+}
+
+static async Task HandoffGenerateReplacesTaskAsync()
+{
+    await using var scope = await TestScope.CreateAsync();
+    await using var importer = new CaptureInboxImporter(scope.Repository, inboxDirectory: scope.Inbox);
+    await using var viewModel = new MainWindowViewModel(scope.Repository, importer, FakeCodexClient.Success());
+    viewModel.HandoffTask = "OLD TASK";
+    viewModel.Turns.Add(HandoffTurn("My request:\nNEW TASK"));
+    viewModel.GenerateHandoffCommand.Execute(null);
+    Assert(viewModel.HandoffTask == "NEW TASK", "generate did not replace stale task");
+}
+
+static async Task HandoffGenerateEmptySelectionAsync()
+{
+    await using var scope = await TestScope.CreateAsync();
+    await using var importer = new CaptureInboxImporter(scope.Repository, inboxDirectory: scope.Inbox);
+    await using var viewModel = new MainWindowViewModel(scope.Repository, importer, FakeCodexClient.Success());
+    viewModel.HandoffTask = "OLD TASK";
+    viewModel.Turns.Add(HandoffTurn("My request:\n"));
+    viewModel.Turns.Add(HandoffTurn("Files pasted by the user:\nold attachment"));
+    viewModel.GenerateHandoffCommand.Execute(null);
+    Assert(viewModel.HandoffTask == string.Empty, "empty selected attachments became task fallback");
+}
+
+static async Task HandoffGenerateTwiceAsync()
+{
+    await using var scope = await TestScope.CreateAsync();
+    await using var importer = new CaptureInboxImporter(scope.Repository, inboxDirectory: scope.Inbox);
+    await using var viewModel = new MainWindowViewModel(scope.Repository, importer, FakeCodexClient.Success());
+    viewModel.Turns.Add(HandoffTurn("My request:\nFIRST"));
+    viewModel.GenerateHandoffCommand.Execute(null);
+    Assert(viewModel.HandoffTask == "FIRST", "first generate failed");
+    viewModel.Turns.Clear();
+    viewModel.Turns.Add(HandoffTurn("My request:\n"));
+    viewModel.GenerateHandoffCommand.Execute(null);
+    Assert(viewModel.HandoffTask == string.Empty, "second generate retained first task");
+}
+
+static async Task ClearSelectionClearsSelectedTurnsAsync()
+{
+    await using var scope = await TestScope.CreateAsync();
+    await scope.Repository.SaveAsync(new CaptureValidator().Validate(CaptureJson.Serialize(SelectionPayload(3))));
+    await using var importer = new CaptureInboxImporter(scope.Repository, inboxDirectory: scope.Inbox);
+    await using var viewModel = new MainWindowViewModel(scope.Repository, importer, FakeCodexClient.Success());
+    await viewModel.RefreshAsync();
+    viewModel.Turns[2].IsSelected = false;
+    Assert(viewModel.Turns.Select(turn => turn.IsSelected).SequenceEqual([true, true, false]), "selection fixture was not loaded");
+    var draftBefore = viewModel.DraftText;
+    Assert(!string.IsNullOrEmpty(draftBefore), "selection fixture did not produce a draft");
+    viewModel.HandoffTask = "KEEP HANDOFF";
+
+    viewModel.ClearSelectionCommand.Execute(null);
+
+    Assert(viewModel.Turns.All(turn => !turn.IsSelected), "clear selection left selected turns");
+    Assert(viewModel.DraftText == draftBefore, "clear selection changed the draft");
+    Assert(viewModel.HandoffTask == "KEEP HANDOFF", "clear selection changed the handoff");
+}
+
+static async Task ClearSelectionWithNothingSelectedAsync()
+{
+    await using var scope = await TestScope.CreateAsync();
+    await scope.Repository.SaveAsync(new CaptureValidator().Validate(CaptureJson.Serialize(SelectionPayload(2))));
+    await using var importer = new CaptureInboxImporter(scope.Repository, inboxDirectory: scope.Inbox);
+    await using var viewModel = new MainWindowViewModel(scope.Repository, importer, FakeCodexClient.Success());
+    await viewModel.RefreshAsync();
+    foreach (var turn in viewModel.Turns)
+    {
+        turn.IsSelected = false;
+    }
+
+    viewModel.ClearSelectionCommand.Execute(null);
+
+    Assert(viewModel.Turns.All(turn => !turn.IsSelected), "clear selection changed an empty selection");
+}
+
+static TurnRowViewModel HandoffTurn(string userText)
+{
+    var fixture = LoadFixture().Turns[0];
+    return new TurnRowViewModel(fixture with { User = fixture.User with { Text = userText } }, true);
+}
+
+static CapturePayload SelectionPayload(int turnCount)
+{
+    var fixture = LoadFixture();
+    var seed = fixture.Turns[0];
+    var turns = Enumerable.Range(0, turnCount).Select(index => seed with
+    {
+        Id = $"turn-{index}",
+        Index = index,
+        User = seed.User with { Id = $"user-{index}" },
+        Assistant = seed.Assistant is null ? null : seed.Assistant with { Id = $"assistant-{index}" },
+    }).ToList();
+    return fixture with
+    {
+        Turns = turns,
+        Selection = fixture.Selection with
+        {
+            SelectedTurnIds = Enumerable.Range(0, turnCount).Select(index => $"turn-{index}").ToList(),
+        },
+    };
+}
+
+static async Task ClipboardCopySucceedsImmediatelyAsync()
+{
+    var calls = 0;
+    var service = new ClipboardService(_ => calls++, _ => Task.CompletedTask);
+
+    var result = await service.CopyTextAsync("text");
+
+    Assert(result.Succeeded, "first clipboard write did not succeed");
+    Assert(calls == 1, $"clipboard writer was called {calls} times");
+}
+
+static async Task ClipboardCopyRetriesTransientContentionAsync()
+{
+    var calls = 0;
+    var delays = 0;
+    var service = new ClipboardService(
+        _ =>
+        {
+            calls++;
+            if (calls < 3) throw ClipboardBusyException();
+        },
+        _ => { delays++; return Task.CompletedTask; });
+
+    var result = await service.CopyTextAsync("text");
+
+    Assert(result.Succeeded, "clipboard retry did not eventually succeed");
+    Assert(calls == 3, $"clipboard writer was called {calls} times instead of 3");
+    Assert(delays == 10, $"clipboard verification/retry delayed {delays} times instead of 10");
+}
+
+static async Task ClipboardCopyStopsAtMaximumAttemptsAsync()
+{
+    var calls = 0;
+    var service = new ClipboardService(
+        _ => { calls++; throw ClipboardBusyException(); },
+        _ => Task.CompletedTask);
+
+    var result = await service.CopyTextAsync("text");
+
+    Assert(!result.Succeeded, "clipboard copy unexpectedly succeeded");
+    Assert(calls == 5, $"clipboard writer was called {calls} times instead of 5");
+    Assert(result.Error is COMException { HResult: ClipboardService.ClipboardCantOpenHResult }, "clipboard contention error was not returned");
+}
+
+static async Task ClipboardCopyDoesNotRetryOtherComErrorsAsync()
+{
+    var calls = 0;
+    var service = new ClipboardService(
+        _ => { calls++; throw new COMException("other failure", unchecked((int)0x80004005)); },
+        _ => Task.CompletedTask);
+
+    var result = await service.CopyTextAsync("text");
+
+    Assert(!result.Succeeded, "unrelated COM error unexpectedly succeeded");
+    Assert(calls == 1, $"unrelated COM error was retried {calls} times");
+}
+
+static async Task ClipboardCopyPreservesTextAsync()
+{
+    const string expected = "第一行\r\n```csharp\r\nConsole.WriteLine(\"原样\");\r\n```";
+    string? actual = null;
+    var service = new ClipboardService(text => actual = text, _ => Task.CompletedTask);
+
+    var result = await service.CopyTextAsync(expected);
+
+    Assert(result.Succeeded, "clipboard copy failed");
+    Assert(actual == expected, "clipboard service modified the copied text");
+}
+
+static async Task ClipboardBusyThenSuccessStopsImmediatelyAsync()
+{
+    var calls = 0;
+    var service = new ClipboardService(
+        _ =>
+        {
+            calls++;
+            if (calls == 1) throw ClipboardBusyException();
+        },
+        _ => Task.CompletedTask);
+
+    var result = await service.CopyTextAsync("text");
+
+    Assert(result.Succeeded, "busy then success was not reported as success");
+    Assert(calls == 2, $"successful retry continued to attempt {calls} writes");
+}
+
+static async Task ClipboardSuccessClearsStaleExceptionAsync()
+{
+    var calls = 0;
+    var service = new ClipboardService(
+        _ =>
+        {
+            calls++;
+            if (calls == 1) throw ClipboardBusyException();
+        },
+        _ => Task.CompletedTask);
+
+    var result = await service.CopyTextAsync("text");
+
+    Assert(result.Succeeded, "retry success was not reported as success");
+    Assert(result.Error is null, "retry success retained the previous exception");
+}
+
+static async Task ClipboardSideEffectReportsSuccessAsync()
+{
+    const string expected = "handoff body";
+    string? writtenText = null;
+    var calls = 0;
+    var service = new ClipboardService(
+        text =>
+        {
+            calls++;
+            writtenText = text;
+            throw ClipboardBusyException();
+        },
+        _ => Task.CompletedTask,
+        () => writtenText);
+
+    var result = await service.CopyTextAsync(expected);
+
+    Assert(writtenText == expected, "writer did not receive the complete input");
+    Assert(result.Succeeded, "a successful clipboard side effect was reported as failure");
+    Assert(result.Error is null, "side-effect success retained an exception");
+    Assert(calls == 1, $"side-effect success retried {calls} times");
+}
+
+static async Task ClipboardSideEffectVerificationPollsAsync()
+{
+    const string expected = "handoff body";
+    string? writtenText = null;
+    var reads = 0;
+    var service = new ClipboardService(
+        text =>
+        {
+            writtenText = text;
+            throw ClipboardBusyException();
+        },
+        _ => Task.CompletedTask,
+        () =>
+        {
+            reads++;
+            if (reads < 3) throw ClipboardBusyException();
+            return writtenText;
+        });
+
+    var result = await service.CopyTextAsync(expected);
+
+    Assert(result.Succeeded && result.Error is null, "polling did not convert the verified side effect to success");
+    Assert(reads == 3, $"verification stopped after {reads} reads instead of the third match");
+}
+
+static async Task ClipboardVerificationMatchPreventsAnotherWriteAsync()
+{
+    var writes = 0;
+    var service = new ClipboardService(
+        _ =>
+        {
+            writes++;
+            throw ClipboardBusyException();
+        },
+        _ => Task.CompletedTask,
+        () => "expected");
+
+    var result = await service.CopyTextAsync("expected");
+
+    Assert(result.Succeeded && result.Error is null, "verification match was not successful");
+    Assert(writes == 1, $"verification match allowed {writes} write attempts");
+}
+
+static async Task ClipboardVerificationMissAllowsNextWriteAsync()
+{
+    var writes = 0;
+    var service = new ClipboardService(
+        _ =>
+        {
+            writes++;
+            if (writes == 1) throw ClipboardBusyException();
+        },
+        _ => Task.CompletedTask,
+        () => "CLIPTEST-OLD");
+
+    var result = await service.CopyTextAsync("expected");
+
+    Assert(result.Succeeded && result.Error is null, "next write did not recover after verification miss");
+    Assert(writes == 2, $"verification miss made {writes} write attempts");
+}
+
+static async Task ClipboardAllBusyAttemptsRemainFailureAsync()
+{
+    var writes = 0;
+    var service = new ClipboardService(
+        _ =>
+        {
+            writes++;
+            throw ClipboardBusyException();
+        },
+        _ => Task.CompletedTask,
+        () => throw ClipboardBusyException());
+
+    var result = await service.CopyTextAsync("expected");
+
+    Assert(!result.Succeeded, "all busy attempts unexpectedly succeeded");
+    Assert(writes == 5, $"all busy attempts made {writes} writes instead of 5");
+}
+
+static COMException ClipboardBusyException() => new("clipboard busy", ClipboardService.ClipboardCantOpenHResult);
+
+static async Task HandoffCopySuccessReplacesStaleFailureAsync()
+{
+    var calls = 0;
+    var service = new ClipboardService(_ =>
+    {
+        calls++;
+        if (calls == 1) throw new InvalidOperationException("old failure");
+    }, _ => Task.CompletedTask);
+    await using var scope = await TestScope.CreateAsync();
+    await using var importer = new CaptureInboxImporter(scope.Repository, inboxDirectory: scope.Inbox);
+    await using var viewModel = new MainWindowViewModel(scope.Repository, importer, FakeCodexClient.Success(), clipboardService: service);
+    viewModel.HandoffTitle = "Fixture";
+
+    viewModel.CopyHandoffCommand.Execute(null);
+    await WaitForStatusAsync(viewModel, "Copy failed: old failure");
+    viewModel.CopyHandoffCommand.Execute(null);
+    await WaitForStatusAsync(viewModel, "Handoff copied.");
+
+    Assert(viewModel.StatusText == "Handoff copied.", "successful Handoff copy did not replace stale failure");
+}
+
+static async Task HandoffCopyFailureReportsCurrentReasonAsync()
+{
+    var service = new ClipboardService(_ => throw new InvalidOperationException("current failure"), _ => Task.CompletedTask);
+    await using var scope = await TestScope.CreateAsync();
+    await using var importer = new CaptureInboxImporter(scope.Repository, inboxDirectory: scope.Inbox);
+    await using var viewModel = new MainWindowViewModel(scope.Repository, importer, FakeCodexClient.Success(), clipboardService: service);
+    viewModel.HandoffTitle = "Fixture";
+
+    viewModel.CopyHandoffCommand.Execute(null);
+    await WaitForStatusAsync(viewModel, "Copy failed: current failure");
+
+    Assert(viewModel.StatusText == "Copy failed: current failure", "current Handoff copy failure reason was not shown");
+}
+
+static async Task HandoffCopyKeepsLatestStatusAsync()
+{
+    var calls = 0;
+    var service = new ClipboardService(_ =>
+    {
+        calls++;
+        if (calls == 1) throw new InvalidOperationException("stale failure");
+    }, _ => Task.CompletedTask);
+    await using var scope = await TestScope.CreateAsync();
+    await using var importer = new CaptureInboxImporter(scope.Repository, inboxDirectory: scope.Inbox);
+    await using var viewModel = new MainWindowViewModel(scope.Repository, importer, FakeCodexClient.Success(), clipboardService: service);
+    viewModel.HandoffTitle = "Fixture";
+
+    viewModel.CopyHandoffCommand.Execute(null);
+    await WaitForStatusAsync(viewModel, "Copy failed: stale failure");
+    viewModel.CopyHandoffCommand.Execute(null);
+    await WaitForStatusAsync(viewModel, "Handoff copied.");
+    await Task.Delay(100);
+
+    Assert(viewModel.StatusText == "Handoff copied.", "an older Handoff status overwrote the latest success");
+}
+
+static async Task WaitForStatusAsync(MainWindowViewModel viewModel, string expected)
+{
+    for (var attempt = 0; attempt < 100; attempt++)
+    {
+        if (viewModel.StatusText == expected) return;
+        await Task.Delay(10);
+    }
+
+    throw new InvalidOperationException($"status did not become '{expected}', actual '{viewModel.StatusText}'");
 }
 
 static XDocument LoadThemeDocument(string fileName)

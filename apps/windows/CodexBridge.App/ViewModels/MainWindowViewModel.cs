@@ -24,6 +24,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     private readonly ICodexAppLog codexLog;
     private readonly ICodexAppLog uiLog;
     private readonly Func<MessageBoxResult> confirmWorkspaceSwitch;
+    private readonly ClipboardService clipboardService;
     private ConversationListItemViewModel? selectedConversation;
     private CodexThreadListItemViewModel? selectedCodexThread;
     private TurnSelection? chatGptTurnSelection;
@@ -31,6 +32,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     private CodexThreadSnapshot? codexSnapshot;
     private CancellationTokenSource? codexThreadLoad;
     private int codexLoadSequence;
+    private bool preserveDraftDuringSelectionClear;
     private int sourceIndex;
     private string draftText = string.Empty;
     private string statusText = "Ready";
@@ -57,6 +59,19 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     private bool enableGitIntegration = true;
     private readonly ContextPackService contextPackService = new();
     private string contextPreviewText = string.Empty;
+    private string handoffTarget = "Codex";
+    private string handoffTemplate = "Continue Task";
+    private string handoffTitle = string.Empty;
+    private string handoffTask = string.Empty;
+    private string handoffCurrentState = string.Empty;
+    private string handoffConstraints = "Do not auto-send.\nDo not execute automatically.";
+    private string handoffNextAction = string.Empty;
+    private string handoffPreviewText = string.Empty;
+    private long handoffCopySequence;
+    private bool includeHandoffContext = true;
+    private bool includeHandoffWorkspace = true;
+    private bool includeHandoffGit = true;
+    private bool includeHandoffProjectFiles;
 
     public MainWindowViewModel(
         IConversationRepository repository,
@@ -65,15 +80,17 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         ICodexAppLog? codexLog = null,
         Func<ICodexClient>? codexClientFactory = null,
         ICodexAppLog? uiLog = null,
-        Func<MessageBoxResult>? confirmWorkspaceSwitch = null)
+        Func<MessageBoxResult>? confirmWorkspaceSwitch = null,
+        ClipboardService? clipboardService = null)
     {
         this.repository = repository;
         this.importer = importer;
         this.codexClient = codexClient;
         this.codexLog = codexLog ?? NullCodexAppLog.Instance;
         this.uiLog = uiLog ?? NullCodexAppLog.Instance;
+        this.clipboardService = clipboardService ?? ClipboardService.Shared;
         this.confirmWorkspaceSwitch = confirmWorkspaceSwitch ?? (() => MessageBox.Show(
-            "Current context contains selected items.\n\nClear and switch workspace?",
+            "Current context or handoff contains unsaved content.\n\nClear and switch workspace?",
             "Workspace",
             MessageBoxButton.OKCancel,
             MessageBoxImage.Warning));
@@ -83,17 +100,22 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         RefreshCodexCommand = new AsyncRelayCommand(RefreshCodexAsync);
         SelectAllCommand = new RelayCommand(SelectAll);
         ClearSelectionCommand = new RelayCommand(ClearSelection);
-        CopyDraftCommand = new RelayCommand(CopyDraft);
+        CopyDraftCommand = new AsyncRelayCommand(CopyDraftAsync);
         OpenChatGptCommand = new RelayCommand(OpenChatGpt);
         ExportDraftCommand = new RelayCommand(ExportDraft);
         AddWorkspaceCommand = new RelayCommand(AddWorkspace);
         NewNoteCommand = new RelayCommand(NewNote);
         OpenNoteCommand = new RelayCommand(OpenNote);
         DeleteNoteCommand = new RelayCommand(DeleteNote);
-        CopyContextCommand = new RelayCommand(CopyContext);
+        CopyContextCommand = new AsyncRelayCommand(CopyContextAsync);
         ExportContextCommand = new RelayCommand(ExportContext);
         ClearContextCommand = new RelayCommand(ClearContext);
         PreviewContextCommand = new RelayCommand(PreviewContext);
+        GenerateHandoffCommand = new RelayCommand(GenerateHandoff);
+        PreviewHandoffCommand = new RelayCommand(UpdateHandoffPreview);
+        CopyHandoffCommand = new AsyncRelayCommand(CopyHandoffAsync);
+        ExportHandoffCommand = new RelayCommand(ExportHandoff);
+        UseCurrentSessionCommand = new RelayCommand(UseCurrentSessionForHandoff);
         IgnoreFolders = new ObservableCollection<string>(ProjectContextService.DefaultIgnoreFolders);
         Notes = new ObservableCollection<NoteItem>();
         GitChangedFiles = new ObservableCollection<GitChangedFile>();
@@ -150,6 +172,27 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     public ICommand ExportContextCommand { get; }
     public ICommand ClearContextCommand { get; }
     public ICommand PreviewContextCommand { get; }
+    public ICommand GenerateHandoffCommand { get; }
+    public ICommand PreviewHandoffCommand { get; }
+    public ICommand CopyHandoffCommand { get; }
+    public ICommand ExportHandoffCommand { get; }
+    public ICommand UseCurrentSessionCommand { get; }
+
+    public string HandoffTarget { get => handoffTarget; set { if (SetProperty(ref handoffTarget, value)) UpdateHandoffPreview(); } }
+    public string HandoffTemplate { get => handoffTemplate; set { if (SetProperty(ref handoffTemplate, value)) UpdateHandoffPreview(); } }
+    public string HandoffTitle { get => handoffTitle; set { if (SetProperty(ref handoffTitle, value)) UpdateHandoffPreview(); } }
+    public string HandoffTask { get => handoffTask; set { if (SetProperty(ref handoffTask, value)) UpdateHandoffPreview(); } }
+    public string HandoffCurrentState { get => handoffCurrentState; set { if (SetProperty(ref handoffCurrentState, value)) UpdateHandoffPreview(); } }
+    public string HandoffConstraints { get => handoffConstraints; set { if (SetProperty(ref handoffConstraints, value)) UpdateHandoffPreview(); } }
+    public string HandoffNextAction { get => handoffNextAction; set { if (SetProperty(ref handoffNextAction, value)) UpdateHandoffPreview(); } }
+    public string HandoffPreviewText { get => handoffPreviewText; private set => SetProperty(ref handoffPreviewText, value); }
+    public bool IncludeHandoffContext { get => includeHandoffContext; set { if (SetProperty(ref includeHandoffContext, value)) UpdateHandoffPreview(); } }
+    public bool IncludeHandoffWorkspace { get => includeHandoffWorkspace; set { if (SetProperty(ref includeHandoffWorkspace, value)) UpdateHandoffPreview(); } }
+    public bool IncludeHandoffGit { get => includeHandoffGit; set { if (SetProperty(ref includeHandoffGit, value)) UpdateHandoffPreview(); } }
+    public bool IncludeHandoffProjectFiles { get => includeHandoffProjectFiles; set { if (SetProperty(ref includeHandoffProjectFiles, value)) UpdateHandoffPreview(); } }
+    public int HandoffCharacters => HandoffPreviewText.Length;
+    public string HandoffCharacterSummary => $"Characters: {HandoffCharacters}";
+    public string HandoffSizeState => ContextPackService.ClassifySize(HandoffCharacters);
 
     public int SourceIndex
     {
@@ -673,7 +716,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             }
         }
 
-        UpdateDraft();
+        if (!preserveDraftDuringSelectionClear)
+        {
+            UpdateDraft();
+        }
+
         OnPropertyChanged(nameof(SelectedTurnSummary));
     }
 
@@ -712,12 +759,19 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             codexSelectedTurnIds?.Clear();
         }
 
-        foreach (var row in Turns)
+        preserveDraftDuringSelectionClear = true;
+        try
         {
-            row.IsSelected = false;
+            foreach (var row in Turns)
+            {
+                row.IsSelected = false;
+            }
+        }
+        finally
+        {
+            preserveDraftDuringSelectionClear = false;
         }
 
-        UpdateDraft();
         OnPropertyChanged(nameof(SelectedTurnSummary));
     }
 
@@ -738,7 +792,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             : CodexDraftRenderer.Render(codexSnapshot, codexSelectedTurnIds);
     }
 
-    private void CopyDraft()
+    private async Task CopyDraftAsync()
     {
         if (string.IsNullOrEmpty(DraftText))
         {
@@ -746,15 +800,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             return;
         }
 
-        try
+        var result = await ClipboardService.Shared.CopyTextAsync(DraftText);
+        if (result.Succeeded)
         {
-            Clipboard.SetText(DraftText);
             StatusText = "草稿已复制到剪贴板";
+            return;
         }
-        catch (Exception exception)
-        {
-            StatusText = $"复制失败：{exception.Message}";
-        }
+
+        StatusText = $"复制失败：{result.Error?.Message ?? "Clipboard unavailable."}";
     }
 
     private void OpenChatGpt()
@@ -900,10 +953,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     private ContextPack BuildContextPack() => contextPackService.Create("Context Pack", SelectedWorkspace!, ContextItems);
     private string RenderContext() => contextPackService.RenderMarkdown(BuildContextPack(), GitBranch, GitModifiedCount);
     private void NotifyContext() { OnPropertyChanged(nameof(ContextItemCount)); OnPropertyChanged(nameof(ContextCharacters)); OnPropertyChanged(nameof(ContextSizeState)); OnPropertyChanged(nameof(ContextPreviewText)); }
-    private void CopyContext()
+    private async Task CopyContextAsync()
     {
         if (SelectedWorkspace is null || ContextItems.Count == 0) return;
-        try { Clipboard.SetText(RenderContext()); codexLog.Write($"context copied; count={ContextItems.Count}"); } catch { }
+        var result = await ClipboardService.Shared.CopyTextAsync(RenderContext());
+        if (result.Succeeded) codexLog.Write($"context copied; count={ContextItems.Count}");
     }
     private void ExportContext()
     {
@@ -973,7 +1027,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             return true;
         }
 
-        if (requireConfirmation && ContextItems.Count > 0 && confirmWorkspaceSwitch() != MessageBoxResult.OK)
+        if (requireConfirmation && (ContextItems.Count > 0 || HandoffPreviewText.Length > 0) && confirmWorkspaceSwitch() != MessageBoxResult.OK)
         {
             uiLog.Write("workspace switch rolled back; reason=cancelled");
             OnPropertyChanged(nameof(WorkspaceSelection));
@@ -1001,6 +1055,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             WorkspaceStore.Save(persisted);
 
             if (ContextItems.Count > 0) ClearContext();
+            ClearHandoff();
             if (index >= 0) Workspaces[index] = updated;
             SelectedWorkspace = updated;
             ProjectRootItems.Clear();
@@ -1117,6 +1172,101 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         var full = Path.GetFullPath(SelectedNote.Path);
         if (full.StartsWith(Path.GetFullPath(NotesDirectory) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) File.Delete(full);
         LoadNotes();
+    }
+
+    private void UseCurrentSessionForHandoff()
+    {
+        if (Turns.All(row => !row.IsSelected))
+        {
+            StatusText = "Select conversation turns first.";
+            return;
+        }
+
+        GenerateHandoff();
+    }
+
+    private void GenerateHandoff()
+    {
+        HandoffTitle = string.Empty;
+        HandoffTask = string.Empty;
+        HandoffCurrentState = string.Empty;
+        HandoffNextAction = string.Empty;
+
+        HandoffTitle = CurrentSessionTitle == "No session selected" ? string.Empty : CurrentSessionTitle;
+        var selected = Turns.Where(row => row.IsSelected).ToArray();
+        var generatedTask = selected.Reverse()
+            .Select(row => HandoffService.NormalizeUserTask(row.Turn.User.Text))
+            .FirstOrDefault(task => !string.IsNullOrWhiteSpace(task)) ?? string.Empty;
+        HandoffTask = generatedTask;
+        HandoffCurrentState = string.Join(Environment.NewLine, new[]
+        {
+            $"Selected {selected.Length} visible turns",
+            $"Included {ContextItems.Count} context items",
+            SelectedWorkspace is null ? string.Empty : $"Workspace {SelectedWorkspace.Name}",
+            GitBranch == "Git not found" ? string.Empty : $"Branch {GitBranch}",
+            $"{GitChangedFiles.Count} changed files",
+        }.Where(line => !string.IsNullOrWhiteSpace(line)).Select(line => $"- {line}"));
+        UpdateHandoffPreview();
+        StatusText = "Handoff generated. Review before copying.";
+    }
+
+    private HandoffInput BuildHandoffInput() => new(
+        HandoffTarget, HandoffTemplate, HandoffTitle, HandoffTask, HandoffCurrentState,
+        HandoffConstraints, HandoffNextAction, SelectedWorkspace?.Name ?? string.Empty,
+        SelectedWorkspace?.Path ?? string.Empty, GitBranch, GitChangedFiles.ToArray(),
+        ContextItems.ToArray(), ProjectFileCount, IncludeHandoffContext, IncludeHandoffWorkspace,
+        IncludeHandoffGit, IncludeHandoffProjectFiles);
+
+    private void UpdateHandoffPreview()
+    {
+        HandoffPreviewText = HandoffService.Render(BuildHandoffInput());
+        OnPropertyChanged(nameof(HandoffCharacters));
+        OnPropertyChanged(nameof(HandoffCharacterSummary));
+        OnPropertyChanged(nameof(HandoffSizeState));
+    }
+
+    private async Task CopyHandoffAsync()
+    {
+        if (string.IsNullOrWhiteSpace(HandoffPreviewText)) return;
+        var sequence = Interlocked.Increment(ref handoffCopySequence);
+        var result = await clipboardService.CopyTextAsync(HandoffPreviewText);
+        if (sequence != Volatile.Read(ref handoffCopySequence)) return;
+
+        if (result.Succeeded)
+        {
+            StatusText = "Handoff copied.";
+            codexLog.Write($"handoff copied; target={HandoffTarget}; template={HandoffTemplate}; characters={HandoffCharacters}; item count={ContextItems.Count}");
+            return;
+        }
+
+        StatusText = $"Copy failed: {result.Error?.Message ?? "Clipboard unavailable."}";
+    }
+
+    private void ExportHandoff()
+    {
+        try
+        {
+            var directory = SelectedWorkspace is null
+                ? Path.Combine(CodexBridgeWindowsPaths.SupportDirectory, "Exports", "handoff")
+                : Path.Combine(SelectedWorkspace.Path, ".ai", "exports", "handoff");
+            Directory.CreateDirectory(directory);
+            var suffix = HandoffTarget.Equals("ChatGPT", StringComparison.OrdinalIgnoreCase) ? "chatgpt" : "codex";
+            var baseName = $"{DateTime.Now:yyyy-MM-dd-HHmm}-handoff-{suffix}";
+            var path = Path.Combine(directory, baseName + ".md");
+            var index = 2;
+            while (File.Exists(path)) path = Path.Combine(directory, $"{baseName}-{index++}.md");
+            File.WriteAllText(path, HandoffPreviewText);
+            StatusText = $"Exported: {path}";
+            codexLog.Write($"handoff exported; target={HandoffTarget}; template={HandoffTemplate}; characters={HandoffCharacters}; export path={path}");
+        }
+        catch (Exception exception) { StatusText = $"Export failed: {exception.Message}"; }
+    }
+
+    private void ClearHandoff()
+    {
+        HandoffTitle = string.Empty; HandoffTask = string.Empty; HandoffCurrentState = string.Empty; HandoffNextAction = string.Empty;
+        HandoffPreviewText = string.Empty;
+        OnPropertyChanged(nameof(HandoffCharacters)); OnPropertyChanged(nameof(HandoffCharacterSummary)); OnPropertyChanged(nameof(HandoffSizeState));
     }
 
     private void ExportDraft()

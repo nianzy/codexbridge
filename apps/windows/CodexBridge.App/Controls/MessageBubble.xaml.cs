@@ -1,5 +1,6 @@
 using System.Windows.Controls;
 using System.Windows;
+using CodexBridge.App.Infrastructure;
 using CodexBridge.App.ViewModels;
 
 namespace CodexBridge.App.Controls;
@@ -11,14 +12,14 @@ public partial class MessageBubble : UserControl
         InitializeComponent();
     }
 
-    private void CopyMessageClick(object sender, RoutedEventArgs e)
+    private async void CopyMessageClick(object sender, RoutedEventArgs e)
     {
-        if (DataContext is TurnRowViewModel row) Clipboard.SetText($"{row.Turn.User.Text}\n\n{row.Turn.Assistant?.Text ?? ""}");
+        if (DataContext is TurnRowViewModel row) await ClipboardService.Shared.CopyTextAsync($"{row.Turn.User.Text}\n\n{row.Turn.Assistant?.Text ?? ""}");
     }
 
-    private void CopyMarkdownClick(object sender, RoutedEventArgs e)
+    private async void CopyMarkdownClick(object sender, RoutedEventArgs e)
     {
-        if (DataContext is TurnRowViewModel row) Clipboard.SetText($"## User\n\n{row.Turn.User.Text}\n\n## Assistant\n\n{row.Turn.Assistant?.Text ?? ""}");
+        if (DataContext is TurnRowViewModel row) await ClipboardService.Shared.CopyTextAsync($"## User\n\n{row.Turn.User.Text}\n\n## Assistant\n\n{row.Turn.Assistant?.Text ?? ""}");
     }
 
     private void ExportClick(object sender, RoutedEventArgs e)

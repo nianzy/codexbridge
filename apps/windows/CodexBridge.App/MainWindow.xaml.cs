@@ -1,7 +1,10 @@
 using System.Windows;
 using System.IO;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Data;
+using System.Windows.Threading;
 using System.Collections.Specialized;
 using CodexBridge.App.ViewModels;
 using CodexBridge.App.Infrastructure;
@@ -14,6 +17,7 @@ public partial class MainWindow : Window
     private readonly ICodexAppLog uiLog;
     private WindowSettings windowSettings;
     private string themeMode;
+    private bool suppressWorkspaceComboBoxSelection;
 
     public MainWindow(MainWindowViewModel viewModel, ICodexAppLog? uiLog = null)
     {
@@ -99,6 +103,28 @@ public partial class MainWindow : Window
             WindowStartupLocation = WindowStartupLocation.CenterOwner
         };
         window.ShowDialog();
+    }
+
+    private void WorkspaceComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (suppressWorkspaceComboBoxSelection || e.AddedItems.Count == 0 || e.AddedItems[^1] is not WorkspaceItem candidate) return;
+
+        var committed = viewModel.SelectedWorkspace;
+        if (committed is not null && string.Equals(committed.Path, candidate.Path, StringComparison.OrdinalIgnoreCase)) return;
+
+        viewModel.TrySwitchWorkspace(candidate);
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+        {
+            suppressWorkspaceComboBoxSelection = true;
+            try
+            {
+                WorkspaceComboBox.GetBindingExpression(Selector.SelectedItemProperty)?.UpdateTarget();
+            }
+            finally
+            {
+                suppressWorkspaceComboBoxSelection = false;
+            }
+        }));
     }
 
     private void OnTurnsChanged(object? sender, NotifyCollectionChangedEventArgs e)

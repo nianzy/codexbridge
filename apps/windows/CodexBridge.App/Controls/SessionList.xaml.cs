@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using CodexBridge.App.Infrastructure;
 
 namespace CodexBridge.App.Controls;
 
@@ -34,7 +35,7 @@ public partial class SessionList : UserControl
         }
     }
 
-    private void CopyItemClick(object sender, RoutedEventArgs e)
+    private async void CopyItemClick(object sender, RoutedEventArgs e)
     {
         if (sender is not MenuItem menu || menu.Parent is not ContextMenu context || context.PlacementTarget is not FrameworkElement target) return;
         var value = target.DataContext;
@@ -51,7 +52,7 @@ public partial class SessionList : UserControl
                 CodexBridge.App.ViewModels.CodexThreadListItemViewModel codex => codex.Title,
                 _ => string.Empty,
             };
-        if (!string.IsNullOrEmpty(text)) Clipboard.SetText(text);
+        if (!string.IsNullOrEmpty(text)) await ClipboardService.Shared.CopyTextAsync(text);
     }
 
     private void OnChatGptSelectionChanged(object sender, SelectionChangedEventArgs e)

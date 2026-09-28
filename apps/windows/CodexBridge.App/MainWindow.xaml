@@ -25,7 +25,7 @@
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" MinWidth="240">
                     <TextBlock Text="Codex Bridge" FontFamily="Segoe UI Semibold" FontSize="16" Foreground="{DynamicResource TextPrimary}" />
                     <TextBlock Text="ChatGPT + Codex" Foreground="{DynamicResource TextSecondary}" Margin="16,2,0,0" />
-                    <ComboBox ItemsSource="{Binding Workspaces}" SelectedItem="{Binding WorkspaceSelection, Mode=TwoWay}" DisplayMemberPath="Name" MinWidth="120" MaxWidth="220" Width="180" Margin="16,0,0,0" ToolTip="{Binding ProjectPath}" />
+                    <ComboBox x:Name="WorkspaceComboBox" ItemsSource="{Binding Workspaces}" SelectedItem="{Binding SelectedWorkspace, Mode=OneWay}" SelectionChanged="WorkspaceComboBox_SelectionChanged" DisplayMemberPath="Name" MinWidth="120" MaxWidth="220" Width="180" Margin="16,0,0,0" ToolTip="{Binding ProjectPath}" />
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,18,0">
                     <TextBlock Text="Threads: " Foreground="{DynamicResource TextSecondary}" />
@@ -84,9 +84,11 @@
                             <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,4"><TextBlock Text="{Binding ActiveSourceLabel}" Foreground="{DynamicResource TextSecondary}" /><TextBlock Text="{Binding CurrentSessionUpdatedAt}" Foreground="{DynamicResource TextSecondary}" Margin="14,0,0,0" /><TextBlock Text="{Binding SelectedWorkspace.Name, StringFormat=Workspace: {0}}" Foreground="{DynamicResource TextSecondary}" Margin="14,0,0,0" MaxWidth="180" TextTrimming="CharacterEllipsis" ToolTip="{Binding SelectedWorkspace.Name}" /><TextBlock Text="{Binding GitBranch}" Foreground="{DynamicResource TextSecondary}" Margin="14,0,0,0" /></StackPanel>
                         </Grid>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
-                            <Button Content="Refresh" Command="{Binding RefreshActiveCommand}" Style="{StaticResource SecondaryButtonStyle}" Padding="12,5" MinWidth="78" HorizontalContentAlignment="Center" Margin="0,0,8,0" />
+                            <Button Content="Refresh" Command="{Binding RefreshActiveCommand}" Style="{StaticResource SecondaryButtonStyle}" Padding="12,5" MinWidth="78" HorizontalContentAlignment="Center" Margin="0,0,4,0" />
                             <Button Content="Open ChatGPT" Command="{Binding OpenChatGptCommand}" Style="{StaticResource PrimaryButtonStyle}" Padding="12,5" MinWidth="116" HorizontalContentAlignment="Center" />
-                            <Button Content="Export Draft" Command="{Binding ExportDraftCommand}" Style="{StaticResource SecondaryButtonStyle}" Padding="12,5" MinWidth="108" HorizontalContentAlignment="Center" Margin="8,0,0,0" />
+                            <Button Content="Export Draft" Command="{Binding ExportDraftCommand}" Style="{StaticResource SecondaryButtonStyle}" Padding="12,5" MinWidth="108" HorizontalContentAlignment="Center" Margin="4,0,0,0" />
+                            <Button Content="Use Current Session" Command="{Binding UseCurrentSessionCommand}" Style="{StaticResource SecondaryButtonStyle}" Padding="12,5" Margin="4,0,0,0" />
+                            <Button Content="Clear Selection" Command="{Binding ClearSelectionCommand}" ToolTip="Clear selected conversation turns" Style="{StaticResource SecondaryButtonStyle}" Padding="12,5" Margin="4,0,0,0" />
                         </StackPanel>
                     </Grid>
                     <ScrollViewer x:Name="ConversationScrollViewer" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -103,7 +105,7 @@
             <Grid Grid.Column="4"><Grid.RowDefinitions><RowDefinition Height="9*"/><RowDefinition Height="5"/><RowDefinition Height="11*"/></Grid.RowDefinitions>
                 <TabControl Grid.Row="0"><TabItem Header="File"><controls:FilePreview /></TabItem><TabItem Header="Diff"><controls:DiffView /></TabItem></TabControl>
                 <GridSplitter Grid.Row="1" Height="5" HorizontalAlignment="Stretch" Background="{DynamicResource BorderBrush}" ShowsPreview="True" />
-                <TabControl Grid.Row="2"><TabItem Header="Draft"><controls:DraftPanel x:Name="DraftPanelControl" /></TabItem><TabItem Header="Context"><controls:ContextPanel /></TabItem></TabControl>
+                <TabControl Grid.Row="2"><TabItem Header="Draft"><controls:DraftPanel x:Name="DraftPanelControl" /></TabItem><TabItem Header="Context"><controls:ContextPanel /></TabItem><TabItem Header="Handoff"><controls:HandoffPanel /></TabItem></TabControl>
             </Grid>
         </Grid>
 

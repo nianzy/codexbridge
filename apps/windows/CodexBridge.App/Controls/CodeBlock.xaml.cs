@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using CodexBridge.App.Infrastructure;
 
 namespace CodexBridge.App.Controls;
 
@@ -17,8 +18,8 @@ public partial class CodeBlock : UserControl
         try
         {
             if (string.IsNullOrEmpty(Code)) return;
-            Clipboard.SetText(Code);
-            CopyButton.Content = "Copied";
+            var result = await ClipboardService.Shared.CopyTextAsync(Code);
+            CopyButton.Content = result.Succeeded ? "Copied" : "Failed";
             await Task.Delay(2000);
             CopyButton.Content = "Copy";
         }
