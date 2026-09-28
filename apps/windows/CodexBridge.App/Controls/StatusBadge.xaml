@@ -4,10 +4,10 @@
     <Border Background="{DynamicResource PanelBackground}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="12" Padding="10,5">
         <Border.ToolTip>
             <StackPanel>
-                <TextBlock Text="{Binding CodexExecutable, StringFormat=Executable：{0}}" />
-                <TextBlock Text="{Binding CodexHome, StringFormat=Codex Home：{0}}" />
-                <TextBlock Text="{Binding CodexThreads.Count, StringFormat=Threads：{0}}" />
-                <TextBlock Text="{Binding CodexModelCount, StringFormat=Models：{0}}" />
+                <TextBlock Text="{Binding CodexExecutable, StringFormat=可执行文件：{0}}" />
+                <TextBlock Text="{Binding CodexHome, StringFormat=Codex 主目录：{0}}" />
+                <TextBlock Text="{Binding CodexThreads.Count, StringFormat=会话：{0}}" />
+                <TextBlock Text="{Binding CodexModelCount, StringFormat=模型：{0}}" />
             </StackPanel>
         </Border.ToolTip>
         <StackPanel Orientation="Horizontal">

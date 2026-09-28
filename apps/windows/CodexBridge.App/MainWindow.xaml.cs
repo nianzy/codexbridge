@@ -78,7 +78,7 @@ public partial class MainWindow : Window
             var settings = new SettingsViewModel(viewModel, viewModel.RefreshCodexAsync, themeMode);
             var window = new Window
             {
-                Title = "Codex Bridge Settings",
+                Title = (string)(Application.Current.FindResource("UiSettingsWindowTitle") ?? "Codex Bridge 设置"),
                 Width = 520,
                 Height = 620,
                 Owner = this,
@@ -98,7 +98,7 @@ public partial class MainWindow : Window
     {
         var window = new Window
         {
-            Title = "Workspace Explorer", Width = 620, Height = 560, Owner = this,
+            Title = (string)(Application.Current.FindResource("UiWorkspaceWindowTitle") ?? "Codex Bridge 工作区"), Width = 620, Height = 560, Owner = this,
             Content = new WorkspaceView { DataContext = viewModel },
             WindowStartupLocation = WindowStartupLocation.CenterOwner
         };

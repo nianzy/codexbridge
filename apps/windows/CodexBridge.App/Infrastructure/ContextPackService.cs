@@ -17,10 +17,10 @@ public sealed class ContextPackService
     public string RenderMarkdown(ContextPack pack, string branch, int modifiedFiles)
     {
         var builder = new StringBuilder();
-        builder.AppendLine("# Context Pack").AppendLine().AppendLine($"Workspace: {pack.WorkspaceName}").AppendLine($"Path: {pack.WorkspacePath}").AppendLine($"Created: {pack.CreatedAt:O}").AppendLine().AppendLine("## Project State").AppendLine().AppendLine($"Branch: {branch}").AppendLine($"Modified Files: {modifiedFiles}").AppendLine();
+        builder.AppendLine("# 上下文包").AppendLine().AppendLine($"工作区：{pack.WorkspaceName}").AppendLine($"路径：{pack.WorkspacePath}").AppendLine($"创建时间：{pack.CreatedAt:O}").AppendLine().AppendLine("## 项目状态").AppendLine().AppendLine($"分支：{branch}").AppendLine($"已修改文件：{modifiedFiles}").AppendLine();
         foreach (var group in pack.Items.GroupBy(item => item.Type))
         {
-            builder.AppendLine(group.Key switch { "ChatGPTTurn" => "## ChatGPT Context", "CodexTurn" => "## Codex Context", "ProjectFile" => "## Project Files", "GitDiff" => "## Git Diffs", "Note" => "## Notes", _ => "## Context" }).AppendLine();
+            builder.AppendLine(group.Key switch { "ChatGPTTurn" => "## ChatGPT 上下文", "CodexTurn" => "## Codex 上下文", "ProjectFile" => "## 项目文件", "GitDiff" => "## Git 差异", "Note" => "## 笔记", _ => "## 上下文" }).AppendLine();
             foreach (var item in group) builder.AppendLine($"### {item.Title}").AppendLine().AppendLine(item.Content).AppendLine();
         }
         return builder.ToString();

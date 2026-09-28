@@ -30,7 +30,7 @@
             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
             <DockPanel>
                 <TextBlock Text="{Binding Language, Mode=OneWay, RelativeSource={RelativeSource AncestorType=UserControl}}" Foreground="#98A2B3" FontSize="12" />
-                <Button x:Name="CopyButton" Content="Copy" Click="CopyClick" HorizontalAlignment="Right" DockPanel.Dock="Right" Style="{StaticResource CodeBlockCopyButtonStyle}" />
+                <Button x:Name="CopyButton" Content="{DynamicResource UiCopy}" Click="CopyClick" HorizontalAlignment="Right" DockPanel.Dock="Right" Style="{StaticResource CodeBlockCopyButtonStyle}" />
             </DockPanel>
             <TextBox Grid.Row="1" Text="{Binding Code, Mode=OneWay, RelativeSource={RelativeSource AncestorType=UserControl}}" IsReadOnly="True"
                      BorderThickness="0" Background="Transparent" Foreground="#F2F4F7" FontFamily="Consolas" FontSize="13"

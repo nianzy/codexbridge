@@ -4,7 +4,7 @@
              xmlns:controls="clr-namespace:CodexBridge.App.Controls">
     <StackPanel Margin="20,10">
         <StackPanel.ContextMenu>
-            <ContextMenu><MenuItem Header="Copy Message" Click="CopyMessageClick"/><MenuItem Header="Copy Markdown" Click="CopyMarkdownClick"/><MenuItem Header="Add to Context" Click="AddContextClick"/><MenuItem Header="Export" Click="ExportClick"/></ContextMenu>
+            <ContextMenu><MenuItem Header="复制消息" Click="CopyMessageClick"/><MenuItem Header="复制 Markdown" Click="CopyMarkdownClick"/><MenuItem Header="{DynamicResource UiAddToContext}" Click="AddContextClick"/><MenuItem Header="{DynamicResource UiExport}" Click="ExportClick"/></ContextMenu>
         </StackPanel.ContextMenu>
         <Grid Margin="0,0,0,10">
             <Grid.ColumnDefinitions>

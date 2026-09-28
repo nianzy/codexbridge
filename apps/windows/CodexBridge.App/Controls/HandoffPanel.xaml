@@ -4,32 +4,32 @@
             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
             <Grid Grid.Row="0" Margin="0,0,0,10">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                <TextBlock Text="Handoff" FontFamily="Segoe UI Semibold" FontSize="16" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
+                <TextBlock Text="{DynamicResource UiHandoff}" FontFamily="Segoe UI Semibold" FontSize="16" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
                 <Border Grid.Column="1" Margin="8,0,0,0" Padding="8,2" CornerRadius="9" Background="{DynamicResource SelectionBrush}"><TextBlock Text="{Binding HandoffSizeState}" Foreground="{DynamicResource TextPrimary}"/></Border>
             </Grid>
             <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel>
-                    <TextBlock Text="Target" Foreground="{DynamicResource TextSecondary}"/>
+                    <TextBlock Text="{DynamicResource UiTarget}" Foreground="{DynamicResource TextSecondary}"/>
                     <ComboBox SelectedValue="{Binding HandoffTarget, Mode=TwoWay}" SelectedValuePath="Tag" HorizontalAlignment="Stretch" Margin="0,3,0,8"><ComboBoxItem Content="Codex" Tag="Codex"/><ComboBoxItem Content="ChatGPT" Tag="ChatGPT"/></ComboBox>
-                    <TextBlock Text="Template" Foreground="{DynamicResource TextSecondary}"/>
-                    <ComboBox SelectedValue="{Binding HandoffTemplate, Mode=TwoWay}" SelectedValuePath="Tag" HorizontalAlignment="Stretch" Margin="0,3,0,8"><ComboBoxItem Content="Continue Task" Tag="Continue Task"/><ComboBoxItem Content="Debug Issue" Tag="Debug Issue"/><ComboBoxItem Content="Review Changes" Tag="Review Changes"/><ComboBoxItem Content="Plan Next Step" Tag="Plan Next Step"/></ComboBox>
-                    <TextBlock Text="Title" Foreground="{DynamicResource TextSecondary}"/><TextBox Text="{Binding HandoffTitle, UpdateSourceTrigger=PropertyChanged}" Margin="0,3,0,8"/>
-                    <TextBlock Text="Task" Foreground="{DynamicResource TextSecondary}"/><TextBox Text="{Binding HandoffTask, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" MinHeight="46" Margin="0,3,0,8"/>
-                    <TextBlock Text="Current State" Foreground="{DynamicResource TextSecondary}"/><TextBox Text="{Binding HandoffCurrentState, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" MinHeight="46" Margin="0,3,0,8"/>
-                    <TextBlock Text="Constraints" Foreground="{DynamicResource TextSecondary}"/><TextBox Text="{Binding HandoffConstraints, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" MinHeight="40" Margin="0,3,0,8"/>
-                    <TextBlock Text="Next Action" Foreground="{DynamicResource TextSecondary}"/><TextBox Text="{Binding HandoffNextAction, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" MinHeight="40" Margin="0,3,0,8"/>
-                    <CheckBox Content="Include Context Pack" IsChecked="{Binding IncludeHandoffContext, Mode=TwoWay}" Margin="0,3"/><CheckBox Content="Include Workspace" IsChecked="{Binding IncludeHandoffWorkspace, Mode=TwoWay}" Margin="0,3"/><CheckBox Content="Include Git State" IsChecked="{Binding IncludeHandoffGit, Mode=TwoWay}" Margin="0,3"/><CheckBox Content="Include Project File Summary" IsChecked="{Binding IncludeHandoffProjectFiles, Mode=TwoWay}" Margin="0,3"/>
-                    <Button Content="Generate from Current State" Command="{Binding GenerateHandoffCommand}" Style="{StaticResource SecondaryButtonStyle}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="0,10,0,8"/>
-                    <TextBlock Text="Preview" Foreground="{DynamicResource TextSecondary}" Margin="0,4,0,3"/><TextBox Text="{Binding HandoffPreviewText, Mode=OneWay}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" MinHeight="120" FontFamily="Consolas"/>
+                    <TextBlock Text="{DynamicResource UiTemplate}" Foreground="{DynamicResource TextSecondary}"/>
+                    <ComboBox SelectedValue="{Binding HandoffTemplate, Mode=TwoWay}" SelectedValuePath="Tag" HorizontalAlignment="Stretch" Margin="0,3,0,8"><ComboBoxItem Content="继续任务" Tag="Continue Task"/><ComboBoxItem Content="调试问题" Tag="Debug Issue"/><ComboBoxItem Content="审查更改" Tag="Review Changes"/><ComboBoxItem Content="规划下一步" Tag="Plan Next Step"/></ComboBox>
+                    <TextBlock Text="{DynamicResource UiTitle}" Foreground="{DynamicResource TextSecondary}"/><TextBox Text="{Binding HandoffTitle, UpdateSourceTrigger=PropertyChanged}" Margin="0,3,0,8"/>
+                    <TextBlock Text="{DynamicResource UiTask}" Foreground="{DynamicResource TextSecondary}"/><TextBox Text="{Binding HandoffTask, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" MinHeight="46" Margin="0,3,0,8"/>
+                    <TextBlock Text="{DynamicResource UiCurrentState}" Foreground="{DynamicResource TextSecondary}"/><TextBox Text="{Binding HandoffCurrentState, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" MinHeight="46" Margin="0,3,0,8"/>
+                    <TextBlock Text="{DynamicResource UiConstraints}" Foreground="{DynamicResource TextSecondary}"/><TextBox Text="{Binding HandoffConstraints, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" MinHeight="40" Margin="0,3,0,8"/>
+                    <TextBlock Text="{DynamicResource UiNextAction}" Foreground="{DynamicResource TextSecondary}"/><TextBox Text="{Binding HandoffNextAction, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" MinHeight="40" Margin="0,3,0,8"/>
+                    <CheckBox Content="{DynamicResource UiIncludeContext}" IsChecked="{Binding IncludeHandoffContext, Mode=TwoWay}" Margin="0,3"/><CheckBox Content="{DynamicResource UiIncludeWorkspace}" IsChecked="{Binding IncludeHandoffWorkspace, Mode=TwoWay}" Margin="0,3"/><CheckBox Content="{DynamicResource UiIncludeGit}" IsChecked="{Binding IncludeHandoffGit, Mode=TwoWay}" Margin="0,3"/><CheckBox Content="{DynamicResource UiIncludeProjectFiles}" IsChecked="{Binding IncludeHandoffProjectFiles, Mode=TwoWay}" Margin="0,3"/>
+                    <Button Content="{DynamicResource UiGenerate}" Command="{Binding GenerateHandoffCommand}" Style="{StaticResource SecondaryButtonStyle}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="0,10,0,8"/>
+                    <TextBlock Text="{DynamicResource UiPreview}" Foreground="{DynamicResource TextSecondary}" Margin="0,4,0,3"/><TextBox Text="{Binding HandoffPreviewText, Mode=OneWay}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" MinHeight="120" FontFamily="Consolas"/>
                 </StackPanel>
             </ScrollViewer>
             <Grid Grid.Row="2" Margin="0,10,0,0">
                 <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                 <TextBlock Text="{Binding HandoffCharacterSummary}" Foreground="{DynamicResource TextSecondary}" HorizontalAlignment="Right" Margin="0,0,0,6"/>
                 <Grid Grid.Row="1"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="6"/><ColumnDefinition Width="*"/><ColumnDefinition Width="6"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                    <Button Grid.Column="0" Content="Preview" Command="{Binding PreviewHandoffCommand}" Style="{StaticResource SecondaryButtonStyle}" HorizontalAlignment="Stretch"/>
-                    <Button Grid.Column="2" Content="Copy Handoff" Command="{Binding CopyHandoffCommand}" Style="{StaticResource PrimaryButtonStyle}" HorizontalAlignment="Stretch"/>
-                    <Button Grid.Column="4" Content="Export" Command="{Binding ExportHandoffCommand}" Style="{StaticResource SecondaryButtonStyle}" HorizontalAlignment="Stretch"/>
+                    <Button Grid.Column="0" Content="{DynamicResource UiPreview}" Command="{Binding PreviewHandoffCommand}" Style="{StaticResource SecondaryButtonStyle}" HorizontalAlignment="Stretch"/>
+                    <Button Grid.Column="2" Content="{DynamicResource UiCopyHandoff}" Command="{Binding CopyHandoffCommand}" Style="{StaticResource PrimaryButtonStyle}" HorizontalAlignment="Stretch"/>
+                    <Button Grid.Column="4" Content="{DynamicResource UiExport}" Command="{Binding ExportHandoffCommand}" Style="{StaticResource SecondaryButtonStyle}" HorizontalAlignment="Stretch"/>
                 </Grid>
             </Grid>
         </Grid>

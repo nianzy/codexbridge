@@ -3,15 +3,15 @@
         <DockPanel>
             <Grid DockPanel.Dock="Top" Margin="4,4,4,8">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                <TextBlock Text="Project Explorer" FontFamily="Segoe UI Semibold" FontSize="15" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" />
+                <TextBlock Text="{DynamicResource UiProjectExplorer}" FontFamily="Segoe UI Semibold" FontSize="15" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" />
                 <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
-                    <Button Content="↻" Click="RefreshClick" ToolTip="Refresh" Style="{StaticResource ToolbarButtonStyle}" MinWidth="30" MinHeight="28" Padding="6,2" />
-                    <Button Content="Context" Click="ContextClick" Margin="5,0,0,0" Style="{StaticResource ToolbarButtonStyle}" Padding="6,2" />
-                    <Button Content="Notes" Click="NotesClick" Margin="5,0,0,0" Style="{StaticResource ToolbarButtonStyle}" Padding="6,2" />
+                    <Button Content="↻" Click="RefreshClick" ToolTip="{DynamicResource UiRefresh}" Style="{StaticResource ToolbarButtonStyle}" MinWidth="30" MinHeight="28" Padding="6,2" />
+                    <Button Content="{DynamicResource UiContext}" Click="ContextClick" Margin="5,0,0,0" Style="{StaticResource ToolbarButtonStyle}" Padding="6,2" />
+                    <Button Content="{DynamicResource UiNotes}" Click="NotesClick" Margin="5,0,0,0" Style="{StaticResource ToolbarButtonStyle}" Padding="6,2" />
                 </StackPanel>
             </Grid>
             <TreeView x:Name="Tree" Margin="0,4,0,0" ItemsSource="{Binding ProjectRootItems}" SelectedItemChanged="TreeSelected" Background="{DynamicResource PanelBackground}" Foreground="{DynamicResource TextPrimary}" BorderBrush="{DynamicResource BorderBrush}">
-                <TreeView.Resources><HierarchicalDataTemplate DataType="{x:Type controls:ProjectTreeItem}" ItemsSource="{Binding Children}"><TextBlock Text="{Binding Name}" Foreground="{DynamicResource TextPrimary}"><TextBlock.ContextMenu><ContextMenu><MenuItem Header="Add to Context" Click="AddContextClick"/></ContextMenu></TextBlock.ContextMenu></TextBlock></HierarchicalDataTemplate></TreeView.Resources>
+                <TreeView.Resources><HierarchicalDataTemplate DataType="{x:Type controls:ProjectTreeItem}" ItemsSource="{Binding Children}"><TextBlock Text="{Binding Name}" Foreground="{DynamicResource TextPrimary}"><TextBlock.ContextMenu><ContextMenu><MenuItem Header="{DynamicResource UiAddToContext}" Click="AddContextClick"/></ContextMenu></TextBlock.ContextMenu></TextBlock></HierarchicalDataTemplate></TreeView.Resources>
             </TreeView>
         </DockPanel>
     </Border>

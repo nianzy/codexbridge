@@ -13,7 +13,7 @@ public partial class WorkspaceView : UserControl
     {
         var picker = new OpenFolderDialog
         {
-            Title = "Select a workspace folder",
+            Title = "选择工作区文件夹",
             Multiselect = false,
         };
 

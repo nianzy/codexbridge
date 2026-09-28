@@ -35,7 +35,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     private bool preserveDraftDuringSelectionClear;
     private int sourceIndex;
     private string draftText = string.Empty;
-    private string statusText = "Ready";
+    private string statusText = UiStrings.Ready;
     private string nativeMessagingText = "Not installed";
     private string codexStatusText = "Disconnected";
     private string codexErrorDetail = string.Empty;
@@ -50,12 +50,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     private string codexExecutable = string.Empty;
     private WorkspaceItem? selectedWorkspace;
     private string newWorkspacePath = string.Empty;
-    private string projectFilePreviewTitle = "File Preview";
-    private string projectFilePreviewText = "Select a supported file from Project Explorer.";
+    private string projectFilePreviewTitle = "文件预览";
+    private string projectFilePreviewText = "请从项目浏览器中选择支持的文件。";
     private string newNoteName = string.Empty;
     private string gitBranch = "Git not found";
-    private string diffPreviewTitle = "Diff Preview";
-    private string diffPreviewText = "Select a changed file.";
+    private string diffPreviewTitle = "差异预览";
+    private string diffPreviewText = "请选择一个变更文件。";
     private bool enableGitIntegration = true;
     private readonly ContextPackService contextPackService = new();
     private string contextPreviewText = string.Empty;
@@ -64,7 +64,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     private string handoffTitle = string.Empty;
     private string handoffTask = string.Empty;
     private string handoffCurrentState = string.Empty;
-    private string handoffConstraints = "Do not auto-send.\nDo not execute automatically.";
+    private string handoffConstraints = "不要自动发送。\n不要自动执行。";
     private string handoffNextAction = string.Empty;
     private string handoffPreviewText = string.Empty;
     private long handoffCopySequence;
@@ -191,8 +191,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     public bool IncludeHandoffGit { get => includeHandoffGit; set { if (SetProperty(ref includeHandoffGit, value)) UpdateHandoffPreview(); } }
     public bool IncludeHandoffProjectFiles { get => includeHandoffProjectFiles; set { if (SetProperty(ref includeHandoffProjectFiles, value)) UpdateHandoffPreview(); } }
     public int HandoffCharacters => HandoffPreviewText.Length;
-    public string HandoffCharacterSummary => $"Characters: {HandoffCharacters}";
-    public string HandoffSizeState => ContextPackService.ClassifySize(HandoffCharacters);
+    public string HandoffCharacterSummary => UiStrings.CharacterSummary(HandoffCharacters);
+    public string HandoffSizeState => UiStrings.SizeState(ContextPackService.ClassifySize(HandoffCharacters));
 
     public int SourceIndex
     {
@@ -269,8 +269,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     private void SetUiStatus(string value, string source)
     {
         StatusText = value;
-        var state = value.StartsWith("Loading", StringComparison.Ordinal) ? "Loading"
-            : value.Equals("Ready", StringComparison.Ordinal) ? "Ready"
+        var state = value.StartsWith("Loading", StringComparison.Ordinal) || value.StartsWith("正在加载", StringComparison.Ordinal) ? "Loading"
+            : value.Equals("Ready", StringComparison.Ordinal) || value.Equals(UiStrings.Ready, StringComparison.Ordinal) ? "Ready"
             : value.Contains("失败", StringComparison.Ordinal) || value.StartsWith("Codex 错误", StringComparison.Ordinal) ? "Error"
             : null;
         if (state is not null)
@@ -295,7 +295,15 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         }
     }
 
-    public string CodexStatusShort => CodexStatusText.StartsWith("Connected", StringComparison.Ordinal) ? "Connected" : CodexStatusText;
+    public string CodexStatusShort => CodexStatusText.StartsWith("Connected", StringComparison.Ordinal)
+        ? $"{UiStrings.Connected} · {CodexStatusText[(CodexStatusText.IndexOf('·') + 1)..].Trim()}"
+        : CodexStatusText switch
+        {
+            "Disconnected" => UiStrings.Disconnected,
+            "Not found" => UiStrings.GitNotFound,
+            "Error" => "错误",
+            _ => CodexStatusText,
+        };
 
     public string CodexErrorDetail
     {
@@ -315,9 +323,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     public string ActiveSourceLabel => SourceIndex == 1
         ? (SelectedCodexThread is null ? string.Empty : "Codex")
         : (SelectedConversation is null ? string.Empty : "ChatGPT");
-    public string CurrentSessionTitle => SourceIndex == 1 ? SelectedCodexThread?.Title ?? "No session selected" : SelectedConversation?.Title ?? "No session selected";
-    public string ChatGptEmptyText => WorkspaceOnly ? "No sessions associated with this workspace" : "No sessions";
-    public string CodexEmptyText => WorkspaceOnly ? "No sessions associated with this workspace" : "No sessions";
+    public string CurrentSessionTitle => SourceIndex == 1 ? SelectedCodexThread?.Title ?? UiStrings.NoSession : SelectedConversation?.Title ?? UiStrings.NoSession;
+    public string ChatGptEmptyText => WorkspaceOnly ? "当前工作区暂无会话" : UiStrings.NoSession;
+    public string CodexEmptyText => WorkspaceOnly ? "当前工作区暂无会话" : UiStrings.NoSession;
     public string CurrentSessionUpdatedAt => SourceIndex == 1
         ? (SelectedCodexThread?.UpdatedAt == DateTimeOffset.MinValue ? string.Empty : SelectedCodexThread?.UpdatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm") ?? string.Empty)
         : SelectedConversation?.UpdatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm") ?? string.Empty;
@@ -353,7 +361,16 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     public int ProjectFileCount { get; private set; }
     public string NewNoteName { get => newNoteName; set => SetProperty(ref newNoteName, value); }
     public NoteItem? SelectedNote { get; set; }
-    public string GitBranch { get => gitBranch; private set => SetProperty(ref gitBranch, value); }
+    public string GitBranch
+    {
+        get => gitBranch;
+        private set
+        {
+            if (!SetProperty(ref gitBranch, value)) return;
+            OnPropertyChanged(nameof(GitBranchDisplay));
+        }
+    }
+    public string GitBranchDisplay => GitBranch == "Git not found" ? UiStrings.GitNotFound : GitBranch;
     public int GitModifiedCount => GitChangedFiles.Count(file => file.Status == "M");
     public int GitAddedCount => GitChangedFiles.Count(file => file.Status == "A");
     public int GitDeletedCount => GitChangedFiles.Count(file => file.Status == "D");
@@ -366,7 +383,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     }
     public int ContextItemCount => ContextItems.Count;
     public int ContextCharacters => ContextItems.Sum(item => item.Content.Length);
-    public string ContextSizeState => ContextPackService.ClassifySize(ContextCharacters) is "Large" ? "Large context" : ContextPackService.ClassifySize(ContextCharacters);
+    public string ContextItemSummary => UiStrings.SelectedContextSummary(ContextItemCount);
+    public string ContextCharacterSummary => UiStrings.ContextCharacters(ContextCharacters);
+    public string ContextSizeState => UiStrings.SizeState(ContextPackService.ClassifySize(ContextCharacters));
     public string ContextPreviewText => contextPreviewText;
 
     public string SessionSearchText
@@ -424,7 +443,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         {
             await importer.StartAsync();
             await RefreshAsync();
-            SetUiStatus("Ready", "startup");
+            SetUiStatus(UiStrings.Ready, "startup");
         }
         catch (Exception exception)
         {
@@ -436,7 +455,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
 
     public async Task RefreshAsync()
     {
-        SetUiStatus("Loading…", "chatgpt");
+        SetUiStatus(UiStrings.Loading, "chatgpt");
         try
         {
             var selectedId = selectedConversation?.Conversation.Id;
@@ -451,7 +470,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
                 ?? ConversationsView.Cast<ConversationListItemViewModel>().FirstOrDefault();
             if (SourceIndex == 0)
             {
-                SetUiStatus("Ready", "chatgpt");
+                SetUiStatus(UiStrings.Ready, "chatgpt");
             }
         }
         catch (Exception exception)
@@ -460,9 +479,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         }
         finally
         {
-            if (StatusText.StartsWith("Loading", StringComparison.Ordinal))
+            if (StatusText.StartsWith("Loading", StringComparison.Ordinal) || StatusText.StartsWith("正在加载", StringComparison.Ordinal))
             {
-                SetUiStatus("Ready", "chatgpt");
+                SetUiStatus(UiStrings.Ready, "chatgpt");
             }
         }
     }
@@ -480,7 +499,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         }
 
         CodexStatusText = "Disconnected";
-        SetUiStatus("Loading…", "codex");
+        SetUiStatus(UiStrings.Loading, "codex");
         CodexErrorDetail = string.Empty;
         CodexExecutable = codexClient.ExecutablePath ?? "未选择";
         codexLog.Write($"refresh start; selected executable={codexClient.ExecutablePath ?? "not selected"}");
@@ -491,7 +510,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             CodexModelCount = probe.Models.Count;
             CodexHome = probe.Initialize.CodexHome ?? "未知";
             CodexVersion = probe.Initialize.UserAgent ?? "未知";
-            CodexStatusText = $"Connected · {probe.Account.DisplayLabel} · {probe.Models.Count} models";
+            CodexStatusText = $"Connected · {probe.Account.DisplayLabel}";
 
             var threads = await codexClient.ListThreadsAsync(100);
             CodexThreads.Clear();
@@ -504,7 +523,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
                 ?? CodexThreadsView.Cast<CodexThreadListItemViewModel>().FirstOrDefault();
             if (SourceIndex == 1)
             {
-                SetUiStatus("Ready", "codex");
+                SetUiStatus(UiStrings.Ready, "codex");
                 if (SelectedCodexThread is null)
                 {
                     ClearTurns();
@@ -519,7 +538,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             CodexThreads.Clear();
             if (SourceIndex == 1)
             {
-                SetUiStatus("未找到 Codex executable", "codex");
+                SetUiStatus("未找到 Codex 可执行文件", "codex");
                 ClearTurns();
             }
         }
@@ -549,9 +568,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         }
         finally
         {
-            if (StatusText.StartsWith("Loading", StringComparison.Ordinal))
+            if (StatusText.StartsWith("Loading", StringComparison.Ordinal) || StatusText.StartsWith("正在加载", StringComparison.Ordinal))
             {
-                SetUiStatus("Ready", "codex");
+                SetUiStatus(UiStrings.Ready, "codex");
             }
         }
     }
@@ -594,7 +613,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
                 AddTurnRow(new TurnRowViewModel(
                     turn,
                     chatGptTurnSelection.IsSelected(turn.Id),
-                    "User",
+                    "用户",
                     "ChatGPT",
                     conversation.CapturedAt));
             }
@@ -685,7 +704,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
                     },
                 Complete = string.Equals(turn.Status, "completed", StringComparison.Ordinal),
             };
-            AddTurnRow(new TurnRowViewModel(captured, true, "User", "Codex",
+            AddTurnRow(new TurnRowViewModel(captured, true, "用户", "Codex",
                 snapshot.Summary.UpdatedAt ?? snapshot.Summary.RecencyAt ?? snapshot.Summary.CreatedAt));
         }
 
@@ -807,7 +826,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             return;
         }
 
-        StatusText = $"复制失败：{result.Error?.Message ?? "Clipboard unavailable."}";
+        StatusText = UiStrings.CopyFailed(result.Error?.Message ?? "Clipboard unavailable.");
     }
 
     private void OpenChatGpt()
@@ -890,11 +909,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         {
             var info = new FileInfo(path);
             ProjectFilePreviewTitle = info.Name;
-            if (info.Length > 512 * 1024) { ProjectFilePreviewText = "File too large"; return; }
+            if (info.Length > 512 * 1024) { ProjectFilePreviewText = "文件过大"; return; }
             var allowed = new[] { ".txt", ".md", ".json", ".cs", ".cpp", ".h" };
             ProjectFilePreviewText = allowed.Contains(info.Extension, StringComparer.OrdinalIgnoreCase) ? File.ReadAllText(path) : "Unsupported file type";
         }
-        catch (Exception exception) { ProjectFilePreviewText = $"Unable to read file: {exception.Message}"; }
+        catch (Exception exception) { ProjectFilePreviewText = $"无法读取文件：{exception.Message}"; }
     }
 
     public void GenerateProjectContext()
@@ -922,7 +941,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     public void AddProjectFileToContext(string path)
     {
         if (SelectedWorkspace is null) return;
-        var info = new FileInfo(path); if (info.Length > 512 * 1024) { StatusText = "File too large for context"; return; }
+        var info = new FileInfo(path); if (info.Length > 512 * 1024) { StatusText = "文件过大，无法添加到上下文"; return; }
         var allowed = new[] { ".txt", ".md", ".json", ".cs", ".cpp", ".h" }; if (!allowed.Contains(info.Extension, StringComparer.OrdinalIgnoreCase)) return;
         var content = File.ReadAllText(path); var relative = Path.GetRelativePath(SelectedWorkspace.Path, path); var key = ContextPackService.CreateKey("ProjectFile", relative, $"{relative}|{info.LastWriteTimeUtc:O}", content);
         AddContextItem(new ContextPackItem("ProjectFile", $"File · {relative}", "Workspace", content, relative, ContextItems.Count, key));
@@ -931,7 +950,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     public async Task AddGitDiffToContextAsync(GitChangedFile file)
     {
         if (SelectedWorkspace is null) return;
-        var content = await new GitService().GetDiffAsync(SelectedWorkspace.Path, file.Path); if (content == "Diff too large") { StatusText = "Diff too large for context"; return; }
+        var content = await new GitService().GetDiffAsync(SelectedWorkspace.Path, file.Path); if (content == "Diff too large") { StatusText = "差异过大，无法添加到上下文"; return; }
         var key = ContextPackService.CreateKey("GitDiff", file.Path, file.Path, content); AddContextItem(new ContextPackItem("GitDiff", $"Diff · {file.Path}", "Git", content, file.Path, ContextItems.Count, key));
     }
 
@@ -952,7 +971,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     private void ClearContext() { ContextItems.Clear(); NotifyContext(); codexLog.Write("context cleared; count=0"); }
     private ContextPack BuildContextPack() => contextPackService.Create("Context Pack", SelectedWorkspace!, ContextItems);
     private string RenderContext() => contextPackService.RenderMarkdown(BuildContextPack(), GitBranch, GitModifiedCount);
-    private void NotifyContext() { OnPropertyChanged(nameof(ContextItemCount)); OnPropertyChanged(nameof(ContextCharacters)); OnPropertyChanged(nameof(ContextSizeState)); OnPropertyChanged(nameof(ContextPreviewText)); }
+    private void NotifyContext() { OnPropertyChanged(nameof(ContextItemCount)); OnPropertyChanged(nameof(ContextCharacters)); OnPropertyChanged(nameof(ContextItemSummary)); OnPropertyChanged(nameof(ContextCharacterSummary)); OnPropertyChanged(nameof(ContextSizeState)); OnPropertyChanged(nameof(ContextPreviewText)); }
     private async Task CopyContextAsync()
     {
         if (SelectedWorkspace is null || ContextItems.Count == 0) return;
@@ -973,7 +992,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     public void OpenNotesWindow()
     {
         var owner = Application.Current.MainWindow;
-        var window = new Window { Title = "Project Notes", Width = 640, Height = 520, Owner = owner, Content = new NotesView { DataContext = this }, WindowStartupLocation = WindowStartupLocation.CenterOwner };
+        var window = new Window { Title = (string)(Application.Current.FindResource("UiNotesWindowTitle") ?? "Codex Bridge 笔记"), Width = 640, Height = 520, Owner = owner, Content = new NotesView { DataContext = this }, WindowStartupLocation = WindowStartupLocation.CenterOwner };
         window.ShowDialog();
     }
 
@@ -996,9 +1015,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     {
         if (SelectedWorkspace is null) return;
         SelectProjectFile(Path.Combine(SelectedWorkspace.Path, file.Path));
-        DiffPreviewTitle = $"Diff: {file.Path}";
+        DiffPreviewTitle = $"差异：{file.Path}";
         try { DiffPreviewText = await new GitService().GetDiffAsync(SelectedWorkspace.Path, file.Path); }
-        catch (Exception exception) { DiffPreviewText = $"Unable to read diff: {exception.Message}"; }
+        catch (Exception exception) { DiffPreviewText = $"无法读取差异：{exception.Message}"; }
     }
 
     private void NotifyGitCounts()
@@ -1066,14 +1085,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             foreach (var note in notes) Notes.Add(note);
             CodexThreadsView.Refresh();
             _ = RefreshGitStatusAsync();
-            StatusText = "Ready";
+            StatusText = UiStrings.Ready;
             uiLog.Write($"workspace switch committed; target={fullPath}");
             return true;
         }
         catch (Exception exception)
         {
             uiLog.Write($"workspace switch rolled back; target={target.Path}; exception={exception.GetType().FullName}; message={exception.Message}");
-            StatusText = "Unable to initialize workspace.";
+            StatusText = "工作区初始化失败。";
             OnPropertyChanged(nameof(WorkspaceSelection));
             return false;
         }
@@ -1099,20 +1118,20 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         {
             if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
             {
-                StatusText = "Unable to add workspace.";
+                StatusText = "无法添加工作区。";
                 return false;
             }
 
             var full = NormalizePath(path);
             if (!Directory.Exists(full))
             {
-                StatusText = "Unable to add workspace.";
+                StatusText = "无法添加工作区。";
                 return false;
             }
 
             if (Workspaces.Any(item => string.Equals(NormalizePath(item.Path), full, StringComparison.OrdinalIgnoreCase)))
             {
-                StatusText = "Workspace already exists.";
+                StatusText = "工作区已存在。";
                 return false;
             }
 
@@ -1126,7 +1145,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         catch (Exception exception)
         {
             codexLog.Write($"workspace add exception; type={exception.GetType().FullName}; message={exception.Message}");
-            StatusText = "Unable to add workspace.";
+            StatusText = "无法添加工作区。";
             return false;
         }
     }
@@ -1178,7 +1197,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     {
         if (Turns.All(row => !row.IsSelected))
         {
-            StatusText = "Select conversation turns first.";
+            StatusText = "请先选择会话轮次。";
             return;
         }
 
@@ -1200,14 +1219,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         HandoffTask = generatedTask;
         HandoffCurrentState = string.Join(Environment.NewLine, new[]
         {
-            $"Selected {selected.Length} visible turns",
-            $"Included {ContextItems.Count} context items",
-            SelectedWorkspace is null ? string.Empty : $"Workspace {SelectedWorkspace.Name}",
-            GitBranch == "Git not found" ? string.Empty : $"Branch {GitBranch}",
-            $"{GitChangedFiles.Count} changed files",
+            $"已选择 {selected.Length} 个可见轮次",
+            $"已包含 {ContextItems.Count} 个上下文项",
+            SelectedWorkspace is null ? string.Empty : $"工作区：{SelectedWorkspace.Name}",
+            GitBranch == "Git not found" ? string.Empty : $"分支：{GitBranch}",
+            $"已修改文件：{GitChangedFiles.Count} 个",
         }.Where(line => !string.IsNullOrWhiteSpace(line)).Select(line => $"- {line}"));
         UpdateHandoffPreview();
-        StatusText = "Handoff generated. Review before copying.";
+            StatusText = UiStrings.HandoffGenerated;
     }
 
     private HandoffInput BuildHandoffInput() => new(
@@ -1234,12 +1253,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
 
         if (result.Succeeded)
         {
-            StatusText = "Handoff copied.";
+            StatusText = UiStrings.HandoffCopied;
             codexLog.Write($"handoff copied; target={HandoffTarget}; template={HandoffTemplate}; characters={HandoffCharacters}; item count={ContextItems.Count}");
             return;
         }
 
-        StatusText = $"Copy failed: {result.Error?.Message ?? "Clipboard unavailable."}";
+        StatusText = UiStrings.CopyFailed(result.Error?.Message ?? "Clipboard unavailable.");
     }
 
     private void ExportHandoff()
@@ -1256,10 +1275,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             var index = 2;
             while (File.Exists(path)) path = Path.Combine(directory, $"{baseName}-{index++}.md");
             File.WriteAllText(path, HandoffPreviewText);
-            StatusText = $"Exported: {path}";
+            StatusText = UiStrings.Exported(path);
             codexLog.Write($"handoff exported; target={HandoffTarget}; template={HandoffTemplate}; characters={HandoffCharacters}; export path={path}");
         }
-        catch (Exception exception) { StatusText = $"Export failed: {exception.Message}"; }
+        catch (Exception exception) { StatusText = $"导出失败：{exception.Message}"; }
     }
 
     private void ClearHandoff()
@@ -1285,9 +1304,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
                 lines.Add($"\n## User\n\n{row.Turn.User.Text}\n\n## Assistant\n\n{row.Turn.Assistant?.Text ?? ""}");
             }
             File.WriteAllText(path, string.Join(Environment.NewLine, lines));
-            StatusText = $"Exported: {path}";
+            StatusText = UiStrings.Exported(path);
         }
-        catch (Exception exception) { StatusText = $"Export failed: {exception.Message}"; }
+        catch (Exception exception) { StatusText = $"导出失败：{exception.Message}"; }
     }
 
     private void ClearTurns()

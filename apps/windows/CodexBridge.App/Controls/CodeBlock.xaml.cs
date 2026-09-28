@@ -19,15 +19,15 @@ public partial class CodeBlock : UserControl
         {
             if (string.IsNullOrEmpty(Code)) return;
             var result = await ClipboardService.Shared.CopyTextAsync(Code);
-            CopyButton.Content = result.Succeeded ? "Copied" : "Failed";
+            CopyButton.Content = result.Succeeded ? UiStrings.Copied : "失败";
             await Task.Delay(2000);
-            CopyButton.Content = "Copy";
+            CopyButton.SetResourceReference(ContentControl.ContentProperty, "UiCopy");
         }
         catch
         {
-            CopyButton.Content = "Failed";
+            CopyButton.Content = "失败";
             await Task.Delay(2000);
-            CopyButton.Content = "Copy";
+            CopyButton.SetResourceReference(ContentControl.ContentProperty, "UiCopy");
         }
     }
 }

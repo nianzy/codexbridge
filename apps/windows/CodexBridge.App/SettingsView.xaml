@@ -3,29 +3,29 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <Border Padding="24" Background="{DynamicResource Background}">
         <StackPanel>
-            <TextBlock Text="Settings" FontFamily="Segoe UI Semibold" FontSize="20" />
+            <TextBlock Text="{DynamicResource UiSettings}" FontFamily="Segoe UI Semibold" FontSize="20" />
             <TextBlock Text="Codex" FontFamily="Segoe UI Semibold" FontSize="16" Margin="0,24,0,12" />
-            <TextBlock Text="Executable" Foreground="{DynamicResource TextSecondary}" />
+            <TextBlock Text="{DynamicResource UiExecutable}" Foreground="{DynamicResource TextSecondary}" />
             <TextBlock Text="{Binding Source.CodexExecutable}" TextWrapping="Wrap" Margin="0,4,0,12" />
-            <TextBlock Text="Codex Home" Foreground="{DynamicResource TextSecondary}" />
+            <TextBlock Text="{DynamicResource UiCodexHome}" Foreground="{DynamicResource TextSecondary}" />
             <TextBlock Text="{Binding Source.CodexHome}" TextWrapping="Wrap" Margin="0,4,0,12" />
-            <TextBlock Text="Version" Foreground="{DynamicResource TextSecondary}" />
+            <TextBlock Text="{DynamicResource UiVersion}" Foreground="{DynamicResource TextSecondary}" />
             <TextBlock Text="{Binding Source.CodexVersion}" Margin="0,4,0,16" />
-            <Button Content="Refresh" Command="{Binding RefreshCommand}" Style="{StaticResource SecondaryButtonStyle}" HorizontalAlignment="Left" />
-            <TextBlock Text="Theme" FontFamily="Segoe UI Semibold" FontSize="16" Margin="0,28,0,8" />
+            <Button Content="{DynamicResource UiRefresh}" Command="{Binding RefreshCommand}" Style="{StaticResource SecondaryButtonStyle}" HorizontalAlignment="Left" />
+            <TextBlock Text="{DynamicResource UiTheme}" FontFamily="Segoe UI Semibold" FontSize="16" Margin="0,28,0,8" />
             <ComboBox SelectedValue="{Binding ThemeMode, Mode=TwoWay}" SelectedValuePath="Tag" Width="180" HorizontalAlignment="Left">
-                <ComboBoxItem Content="Follow Windows" Tag="System" />
-                <ComboBoxItem Content="Light" Tag="Light" />
-                <ComboBoxItem Content="Dark" Tag="Dark" />
+                <ComboBoxItem Content="{DynamicResource UiFollowWindows}" Tag="System" />
+                <ComboBoxItem Content="{DynamicResource UiLight}" Tag="Light" />
+                <ComboBoxItem Content="{DynamicResource UiDark}" Tag="Dark" />
             </ComboBox>
-            <TextBlock Text="Workspace" FontFamily="Segoe UI Semibold" FontSize="16" Margin="0,28,0,8" />
-            <TextBlock Text="Default Workspace" Foreground="{DynamicResource TextSecondary}" />
+            <TextBlock Text="{DynamicResource UiWorkspace}" FontFamily="Segoe UI Semibold" FontSize="16" Margin="0,28,0,8" />
+            <TextBlock Text="{DynamicResource UiDefaultWorkspace}" Foreground="{DynamicResource TextSecondary}" />
             <TextBlock Text="{Binding Source.SelectedWorkspace.Path}" TextWrapping="Wrap" Margin="0,4,0,0" />
-            <TextBlock Text="Default Export Folder" Foreground="{DynamicResource TextSecondary}" Margin="0,12,0,0" />
+            <TextBlock Text="{DynamicResource UiDefaultExportFolder}" Foreground="{DynamicResource TextSecondary}" Margin="0,12,0,0" />
             <TextBlock Text="{Binding Source.SelectedWorkspace.Path, StringFormat={}{0}\docs\chatgpt}" TextWrapping="Wrap" Margin="0,4,0,0" />
-            <TextBlock Text="Ignore folders" FontFamily="Segoe UI Semibold" FontSize="16" Margin="0,28,0,8" />
+            <TextBlock Text="{DynamicResource UiIgnoreFolders}" FontFamily="Segoe UI Semibold" FontSize="16" Margin="0,28,0,8" />
             <TextBlock Text="{Binding Source.IgnoreFolders, StringFormat={}{0}}" Foreground="{DynamicResource TextSecondary}" />
-            <CheckBox Content="Enable Git Integration" IsChecked="{Binding Source.EnableGitIntegration, Mode=TwoWay}" Margin="0,18,0,0" />
+            <CheckBox Content="{DynamicResource UiEnableGit}" IsChecked="{Binding Source.EnableGitIntegration, Mode=TwoWay}" Margin="0,18,0,0" />
         </StackPanel>
     </Border>
 </UserControl>

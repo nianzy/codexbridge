@@ -59,29 +59,58 @@ public static class HandoffService
     public static string Render(HandoffInput input)
     {
         var b = new StringBuilder();
-        b.AppendLine("# Handoff").AppendLine().AppendLine($"Target: {input.Target}").AppendLine($"Title: {input.Title}").AppendLine();
-        if (input.Template == "Debug Issue") b.AppendLine("## Problem").AppendLine().AppendLine(input.Task).AppendLine();
-        else if (input.Template == "Review Changes") b.AppendLine("## Review Goal").AppendLine().AppendLine(input.Task).AppendLine();
-        else b.AppendLine("## Goal").AppendLine().AppendLine(input.Task).AppendLine();
-        b.AppendLine("## Current State").AppendLine().AppendLine(input.CurrentState).AppendLine();
-        if (input.Template == "Plan Next Step") b.AppendLine("## Open Questions").AppendLine().AppendLine(input.Constraints).AppendLine();
-        else b.AppendLine("## Constraints").AppendLine().AppendLine(input.Constraints).AppendLine();
+        b.AppendLine("# 任务交接").AppendLine().AppendLine($"目标：{input.Target}").AppendLine($"标题：{input.Title}").AppendLine();
+        if (input.Template == "Debug Issue")
+        {
+            b.AppendLine("## 问题").AppendLine().AppendLine(input.Task).AppendLine();
+            b.AppendLine("## 实际表现").AppendLine().AppendLine(input.CurrentState).AppendLine();
+            b.AppendLine("## 预期表现").AppendLine().AppendLine(input.NextAction).AppendLine();
+            b.AppendLine("## 证据").AppendLine().AppendLine(input.CurrentState).AppendLine();
+            b.AppendLine("## 疑似区域").AppendLine().AppendLine(input.Task).AppendLine();
+            b.AppendLine("## 约束").AppendLine().AppendLine(input.Constraints).AppendLine();
+            b.AppendLine("## 下一步诊断").AppendLine().AppendLine(input.NextAction).AppendLine();
+        }
+        else if (input.Template == "Review Changes")
+        {
+            b.AppendLine("## 审查目标").AppendLine().AppendLine(input.Task).AppendLine();
+            b.AppendLine("## 修改文件").AppendLine();
+            b.AppendLine("## 相关差异").AppendLine().AppendLine(input.CurrentState).AppendLine();
+            b.AppendLine("## 已知测试").AppendLine();
+            b.AppendLine("## 风险").AppendLine().AppendLine(input.Constraints).AppendLine();
+            b.AppendLine("## 审查请求").AppendLine().AppendLine(input.NextAction).AppendLine();
+        }
+        else if (input.Template == "Plan Next Step")
+        {
+            b.AppendLine("## 目标").AppendLine().AppendLine(input.Task).AppendLine();
+            b.AppendLine("## 当前状态").AppendLine().AppendLine(input.CurrentState).AppendLine();
+            b.AppendLine("## 待确认问题").AppendLine().AppendLine(input.Constraints).AppendLine();
+            b.AppendLine("## 约束").AppendLine().AppendLine(input.Constraints).AppendLine();
+            b.AppendLine("## 可选下一步").AppendLine().AppendLine(input.NextAction).AppendLine();
+            b.AppendLine("## 请求决策").AppendLine().AppendLine(input.NextAction).AppendLine();
+        }
+        else
+        {
+            b.AppendLine("## 目标").AppendLine().AppendLine(input.Task).AppendLine();
+            b.AppendLine("## 当前状态").AppendLine().AppendLine(input.CurrentState).AppendLine();
+        }
+        if (input.Template != "Debug Issue" && input.Template != "Review Changes" && input.Template != "Plan Next Step")
+            b.AppendLine("## 约束").AppendLine().AppendLine(input.Constraints).AppendLine();
         if (input.IncludeContext)
         {
-            b.AppendLine("## Important Context").AppendLine();
+            b.AppendLine("## 重要上下文").AppendLine();
             foreach (var item in input.ContextItems.OrderBy(item => item.Order))
                 b.AppendLine($"### {item.Title}").AppendLine().AppendLine(item.Content).AppendLine();
         }
         if (input.IncludeWorkspace)
-            b.AppendLine("## Workspace").AppendLine().AppendLine($"Workspace: {input.WorkspaceName}").AppendLine($"Path: {input.WorkspacePath}").AppendLine();
+            b.AppendLine("## 工作区").AppendLine().AppendLine($"工作区：{input.WorkspaceName}").AppendLine($"路径：{input.WorkspacePath}").AppendLine();
         if (input.IncludeGit)
         {
-            b.AppendLine("## Git State").AppendLine().AppendLine($"Branch: {input.Branch}").AppendLine($"Modified: {input.ChangedFiles.Count(file => file.Status == "M")}").AppendLine($"Added: {input.ChangedFiles.Count(file => file.Status == "A")}").AppendLine($"Deleted: {input.ChangedFiles.Count(file => file.Status == "D")}").AppendLine().AppendLine("Changed files:");
+            b.AppendLine("## Git 状态").AppendLine().AppendLine($"分支：{input.Branch}").AppendLine($"修改：{input.ChangedFiles.Count(file => file.Status == "M")}").AppendLine($"新增：{input.ChangedFiles.Count(file => file.Status == "A")}").AppendLine($"删除：{input.ChangedFiles.Count(file => file.Status == "D")}").AppendLine().AppendLine("变更文件：");
             foreach (var file in input.ChangedFiles) b.AppendLine($"- {file.Status} {file.Path}");
             b.AppendLine();
         }
-        if (input.IncludeProjectFiles) b.AppendLine("## Project File Summary").AppendLine().AppendLine($"Files: {input.ProjectFileCount}").AppendLine();
-        b.AppendLine(input.Template == "Review Changes" ? "## Requested Review" : input.Template == "Debug Issue" ? "## Next Diagnostic Step" : input.Template == "Plan Next Step" ? "## Requested Decision" : "## Next Action").AppendLine().AppendLine(input.NextAction).AppendLine();
+        if (input.IncludeProjectFiles) b.AppendLine("## 项目文件摘要").AppendLine().AppendLine($"文件数：{input.ProjectFileCount}").AppendLine();
+        if (input.Template == "Continue Task") b.AppendLine("## 下一步操作").AppendLine().AppendLine(input.NextAction).AppendLine();
         return b.ToString();
     }
 }

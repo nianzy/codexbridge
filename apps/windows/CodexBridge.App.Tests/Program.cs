@@ -39,6 +39,9 @@ var tests = new (string Name, Func<Task> Test)[]
     ("theme shared styles remain outside color dictionaries", ThemeSharedStylesAreSeparatedAsync),
     ("light and dark theme keys are symmetric", ThemeColorKeysAreSymmetricAsync),
     ("handoff templates render ordered sections", HandoffTemplatesRenderAsync),
+    ("localized UI strings and handoff content", LocalizedUiStringsAsync),
+    ("localized size and character labels", LocalizedSizeLabelsAsync),
+    ("dark control styles are defined", DarkControlStylesAreDefinedAsync),
     ("handoff embeds context and git state", HandoffContextAndGitRenderAsync),
     ("handoff keeps normal user task", HandoffNormalTaskAsync),
     ("handoff removes attachment wrapper and path", HandoffAttachmentWrapperAsync),
@@ -299,7 +302,7 @@ static async Task SessionExplorerFiltersAsync()
     Assert(viewModel.ConversationsView.Cast<ConversationListItemViewModel>().Count() == 1, "ChatGPT session was hidden while workspace filter was off");
     viewModel.WorkspaceOnly = true;
     Assert(viewModel.ConversationsView.Cast<ConversationListItemViewModel>().Count() == 0, "unassociated ChatGPT session was not hidden by workspace filter");
-    Assert(viewModel.ChatGptEmptyText == "No sessions associated with this workspace", "workspace empty-state text is misleading");
+    Assert(viewModel.ChatGptEmptyText == "当前工作区暂无会话", "workspace empty-state text is misleading");
     viewModel.WorkspaceOnly = false;
     var workspace = viewModel.SelectedWorkspace ?? new WorkspaceItem("fixture", Environment.CurrentDirectory, DateTimeOffset.UtcNow);
     var workspacePath = Path.GetFullPath(workspace.Path);
@@ -568,8 +571,8 @@ static Task ContextPackRendersAsync()
         new ContextPackItem("Note", "ui.md", "Notes", "note", "ui.md", 4, "5"),
     };
     var markdown = service.RenderMarkdown(service.Create("Context Pack", workspace, items), "main", 2);
-    Assert(markdown.IndexOf("## ChatGPT Context", StringComparison.Ordinal) < markdown.IndexOf("## Codex Context", StringComparison.Ordinal), "context section order mismatch");
-    Assert(markdown.Contains("## Project Files") && markdown.Contains("## Git Diffs") && markdown.Contains("## Notes"), "context sections missing");
+    Assert(markdown.IndexOf("## ChatGPT 上下文", StringComparison.Ordinal) < markdown.IndexOf("## Codex 上下文", StringComparison.Ordinal), "context section order mismatch");
+    Assert(markdown.Contains("## 项目文件") && markdown.Contains("## Git 差异") && markdown.Contains("## 笔记"), "context sections missing");
     return Task.CompletedTask;
 }
 
@@ -585,7 +588,7 @@ static Task ContextPackEmptyRenderAsync()
 {
     var service = new ContextPackService();
     var pack = service.Create("Context Pack", new WorkspaceItem("fixture", Path.GetTempPath(), DateTimeOffset.UtcNow), []);
-    Assert(service.RenderMarkdown(pack, "main", 0).Contains("# Context Pack"), "empty context render failed");
+    Assert(service.RenderMarkdown(pack, "main", 0).Contains("# 上下文包"), "empty context render failed");
     return Task.CompletedTask;
 }
 
@@ -634,20 +637,72 @@ static Task HandoffTemplatesRenderAsync()
     foreach (var template in new[] { "Continue Task", "Debug Issue", "Review Changes", "Plan Next Step" })
     {
         var text = HandoffService.Render(new HandoffInput("Codex", template, "Fixture", "task", "state", "constraints", "next", "workspace", "C:\\workspace", "main", [], [], 0, false, true, false, false));
-        Assert(text.StartsWith("# Handoff", StringComparison.Ordinal), $"{template} missing header");
-        Assert(text.Contains("Target: Codex", StringComparison.Ordinal), $"{template} missing target");
-        Assert(text.IndexOf("## Current State", StringComparison.Ordinal) > 0 && text.Contains("## Constraints", StringComparison.Ordinal) || text.Contains("## Open Questions", StringComparison.Ordinal), $"{template} section order mismatch");
+        Assert(text.StartsWith("# 任务交接", StringComparison.Ordinal), $"{template} missing header");
+        Assert(text.Contains("目标：Codex", StringComparison.Ordinal), $"{template} missing target");
+        var requiredSection = template switch
+        {
+            "Debug Issue" => "## 实际表现",
+            "Review Changes" => "## 修改文件",
+            "Plan Next Step" => "## 待确认问题",
+            _ => "## 当前状态",
+        };
+        Assert(text.Contains(requiredSection, StringComparison.Ordinal), $"{template} section order mismatch");
+        var sections = template switch
+        {
+            "Debug Issue" => new[] { "## 问题", "## 实际表现", "## 预期表现", "## 证据", "## 疑似区域", "## 约束", "## 下一步诊断" },
+            "Review Changes" => new[] { "## 审查目标", "## 修改文件", "## 相关差异", "## 已知测试", "## 风险", "## 审查请求" },
+            "Plan Next Step" => new[] { "## 目标", "## 当前状态", "## 待确认问题", "## 约束", "## 可选下一步", "## 请求决策" },
+            _ => new[] { "## 目标", "## 当前状态", "## 约束", "## 下一步操作" },
+        };
+        Assert(sections.All(section => text.Contains(section, StringComparison.Ordinal)), $"{template} localized sections incomplete");
     }
     return Task.CompletedTask;
+}
+
+static Task LocalizedUiStringsAsync()
+{
+    Assert(UiStrings.Ready == "就绪" && UiStrings.HandoffCopied == "交接内容已复制。", "localized UI resources missing");
+    var body = "Please keep this user text unchanged.";
+    var markdown = HandoffService.Render(new HandoffInput("Codex", "Continue Task", "标题", body, "当前状态", "不要自动发送。\n不要自动执行。", "下一步", "工作区", "C:\\workspace", "main", [], [], 0, false, false, true, false));
+    Assert(markdown.Contains("# 任务交接") && markdown.Contains("## 目标") && markdown.Contains(body), "localized Continue Task output is incomplete");
+    Assert(markdown.Contains("Codex") && markdown.Contains("main") && !markdown.Contains("Target:"), "technical names or protocol labels were translated incorrectly");
+    return Task.CompletedTask;
+}
+
+static Task LocalizedSizeLabelsAsync()
+{
+    Assert(UiStrings.SizeState("Small") == "小" && UiStrings.SizeState("Medium") == "中" && UiStrings.SizeState("Large") == "大", "size labels were not localized");
+    Assert(UiStrings.CharacterSummary(0) == "字符数：0" && UiStrings.ContextCharacters(0) == "0 个字符", "character labels were not localized");
+    return Task.CompletedTask;
+}
+
+static Task DarkControlStylesAreDefinedAsync()
+{
+    var styles = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "apps", "windows", "CodexBridge.App", "Themes", "Styles.xaml"));
+    var strings = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "apps", "windows", "CodexBridge.App", "Themes", "Strings.xaml"));
+    Assert(styles.Contains("TargetType=\"ScrollBar\"", StringComparison.Ordinal) && styles.Contains("TargetType=\"Thumb\"", StringComparison.Ordinal), "scrollbar styles missing");
+    Assert(styles.Contains("TargetType=\"CheckBox\"", StringComparison.Ordinal) && strings.Contains("UiSmall", StringComparison.Ordinal), "checkbox or size resources missing");
+    return Task.CompletedTask;
+}
+
+static string FindRepositoryRoot()
+{
+    var directory = new DirectoryInfo(AppContext.BaseDirectory);
+    while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "apps", "windows", "CodexBridge.App", "CodexBridge.App.csproj")))
+    {
+        directory = directory.Parent;
+    }
+
+    return directory?.FullName ?? throw new InvalidOperationException("repository root not found");
 }
 
 static Task HandoffContextAndGitRenderAsync()
 {
     var text = HandoffService.Render(new HandoffInput("ChatGPT", "Continue Task", "Fixture", "task", "state", "constraints", "next", "workspace", "C:\\workspace", "main", [new GitChangedFile("M", "Program.cs")], [new ContextPackItem("ProjectFile", "README.md", "Workspace", "content", "README.md", 0, "key")], 4, true, true, true, true));
-    Assert(text.Contains("Target: ChatGPT", StringComparison.Ordinal), "handoff target missing");
-    Assert(text.Contains("## Important Context", StringComparison.Ordinal) && !text.Contains("# Context Pack", StringComparison.Ordinal), "context was wrapped with duplicate pack heading");
-    Assert(text.Contains("Branch: main", StringComparison.Ordinal) && text.Contains("- M Program.cs", StringComparison.Ordinal), "git state missing");
-    Assert(text.Contains("Files: 4", StringComparison.Ordinal), "project file summary missing");
+    Assert(text.Contains("目标：ChatGPT", StringComparison.Ordinal), "handoff target missing");
+    Assert(text.Contains("## 重要上下文", StringComparison.Ordinal) && !text.Contains("# Context Pack", StringComparison.Ordinal), "context was wrapped with duplicate pack heading");
+    Assert(text.Contains("分支：main", StringComparison.Ordinal) && text.Contains("- M Program.cs", StringComparison.Ordinal), "git state missing");
+    Assert(text.Contains("文件数：4", StringComparison.Ordinal), "project file summary missing");
     return Task.CompletedTask;
 }
 
@@ -1056,11 +1111,11 @@ static async Task HandoffCopySuccessReplacesStaleFailureAsync()
     viewModel.HandoffTitle = "Fixture";
 
     viewModel.CopyHandoffCommand.Execute(null);
-    await WaitForStatusAsync(viewModel, "Copy failed: old failure");
+    await WaitForStatusAsync(viewModel, "复制失败：old failure");
     viewModel.CopyHandoffCommand.Execute(null);
-    await WaitForStatusAsync(viewModel, "Handoff copied.");
+    await WaitForStatusAsync(viewModel, "交接内容已复制。");
 
-    Assert(viewModel.StatusText == "Handoff copied.", "successful Handoff copy did not replace stale failure");
+    Assert(viewModel.StatusText == "交接内容已复制。", "successful Handoff copy did not replace stale failure");
 }
 
 static async Task HandoffCopyFailureReportsCurrentReasonAsync()
@@ -1072,9 +1127,9 @@ static async Task HandoffCopyFailureReportsCurrentReasonAsync()
     viewModel.HandoffTitle = "Fixture";
 
     viewModel.CopyHandoffCommand.Execute(null);
-    await WaitForStatusAsync(viewModel, "Copy failed: current failure");
+    await WaitForStatusAsync(viewModel, "复制失败：current failure");
 
-    Assert(viewModel.StatusText == "Copy failed: current failure", "current Handoff copy failure reason was not shown");
+    Assert(viewModel.StatusText == "复制失败：current failure", "current Handoff copy failure reason was not shown");
 }
 
 static async Task HandoffCopyKeepsLatestStatusAsync()
@@ -1091,12 +1146,12 @@ static async Task HandoffCopyKeepsLatestStatusAsync()
     viewModel.HandoffTitle = "Fixture";
 
     viewModel.CopyHandoffCommand.Execute(null);
-    await WaitForStatusAsync(viewModel, "Copy failed: stale failure");
+    await WaitForStatusAsync(viewModel, "复制失败：stale failure");
     viewModel.CopyHandoffCommand.Execute(null);
-    await WaitForStatusAsync(viewModel, "Handoff copied.");
+    await WaitForStatusAsync(viewModel, "交接内容已复制。");
     await Task.Delay(100);
 
-    Assert(viewModel.StatusText == "Handoff copied.", "an older Handoff status overwrote the latest success");
+    Assert(viewModel.StatusText == "交接内容已复制。", "an older Handoff status overwrote the latest success");
 }
 
 static async Task WaitForStatusAsync(MainWindowViewModel viewModel, string expected)

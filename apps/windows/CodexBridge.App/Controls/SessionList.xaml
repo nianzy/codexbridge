@@ -14,7 +14,7 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <TextBlock Text="Sessions"
+            <TextBlock Text="{DynamicResource UiSessions}"
                        FontFamily="Segoe UI Semibold"
                        FontSize="16"
                        Foreground="{DynamicResource TextPrimary}"
@@ -26,12 +26,12 @@
                      BorderBrush="{DynamicResource BorderBrush}" />
 
             <ComboBox Grid.Row="2" Margin="12,0,12,8" SelectedValue="{Binding SessionFilter, Mode=TwoWay}" SelectedValuePath="Tag">
-                <ComboBoxItem Content="All" Tag="All" />
+                <ComboBoxItem Content="{DynamicResource UiAll}" Tag="All" />
                 <ComboBoxItem Content="ChatGPT" Tag="ChatGPT" />
                 <ComboBoxItem Content="Codex" Tag="Codex" />
             </ComboBox>
 
-            <CheckBox Grid.Row="3" Margin="16,0,12,8" Content="Workspace only" Foreground="{DynamicResource TextPrimary}" IsChecked="{Binding WorkspaceOnly, Mode=TwoWay}" />
+            <CheckBox Grid.Row="3" Margin="16,0,12,8" Content="{DynamicResource UiWorkspaceOnly}" Foreground="{DynamicResource TextPrimary}" IsChecked="{Binding WorkspaceOnly, Mode=TwoWay}" />
 
             <Grid Grid.Row="4">
                 <Grid.RowDefinitions>
@@ -57,7 +57,7 @@
                         <DataTemplate>
                             <StackPanel>
                                 <StackPanel.ContextMenu>
-                                    <ContextMenu><MenuItem Header="Copy title" Tag="title" Click="CopyItemClick" /><MenuItem Header="Copy ID" Tag="id" Click="CopyItemClick" /></ContextMenu>
+                                    <ContextMenu><MenuItem Header="{DynamicResource UiCopyTitle}" Tag="title" Click="CopyItemClick" /><MenuItem Header="{DynamicResource UiCopyId}" Tag="id" Click="CopyItemClick" /></ContextMenu>
                                 </StackPanel.ContextMenu>
                                 <TextBlock Text="{Binding Title}" FontFamily="Segoe UI Semibold" TextTrimming="CharacterEllipsis" />
                                 <TextBlock Text="{Binding Details}" FontSize="11" Foreground="{DynamicResource TextSecondary}" TextTrimming="CharacterEllipsis" Margin="0,3,0,0" />
@@ -94,7 +94,7 @@
                         <DataTemplate>
                             <StackPanel>
                                 <StackPanel.ContextMenu>
-                                    <ContextMenu><MenuItem Header="Copy title" Tag="title" Click="CopyItemClick" /><MenuItem Header="Copy ID" Tag="id" Click="CopyItemClick" /></ContextMenu>
+                                    <ContextMenu><MenuItem Header="{DynamicResource UiCopyTitle}" Tag="title" Click="CopyItemClick" /><MenuItem Header="{DynamicResource UiCopyId}" Tag="id" Click="CopyItemClick" /></ContextMenu>
                                 </StackPanel.ContextMenu>
                                 <TextBlock Text="{Binding Title}" FontFamily="Segoe UI Semibold" TextTrimming="CharacterEllipsis" />
                                 <TextBlock Text="{Binding Details}" FontSize="11" Foreground="{DynamicResource TextSecondary}" TextTrimming="CharacterEllipsis" Margin="0,3,0,0" />
