@@ -19,7 +19,7 @@ public partial class ProjectExplorer : UserControl
     public ProjectExplorer() => InitializeComponent();
 
     private void RefreshClick(object sender, RoutedEventArgs e) => (DataContext as MainWindowViewModel)?.RefreshProjectExplorer();
-    private void ContextClick(object sender, RoutedEventArgs e) => (DataContext as MainWindowViewModel)?.GenerateProjectContext();
+    private void ContextClick(object sender, RoutedEventArgs e) => (DataContext as MainWindowViewModel)?.AddSelectedProjectFileToContext();
     private void NotesClick(object sender, RoutedEventArgs e) => (DataContext as MainWindowViewModel)?.OpenNotesWindow();
     private void TreeSelected(object sender, RoutedPropertyChangedEventArgs<object> e)
     {

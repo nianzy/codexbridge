@@ -12,6 +12,7 @@ using CodexBridge.Core.Capture;
 using CodexBridge.Core.Codex;
 using CodexBridge.Core.Conversations;
 using CodexBridge.App.Controls;
+using CodexBridge.App;
 
 namespace CodexBridge.App.ViewModels;
 
@@ -52,6 +53,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     private string newWorkspacePath = string.Empty;
     private string projectFilePreviewTitle = "文件预览";
     private string projectFilePreviewText = "请从项目浏览器中选择支持的文件。";
+    private string? selectedProjectFilePath;
     private string newNoteName = string.Empty;
     private string gitBranch = "Git not found";
     private string diffPreviewTitle = "差异预览";
@@ -72,6 +74,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     private bool includeHandoffWorkspace = true;
     private bool includeHandoffGit = true;
     private bool includeHandoffProjectFiles;
+    private readonly WorkspaceSnapshotService snapshotService = new();
+    private WorkspaceSnapshotEntry? selectedSnapshot;
+    private string snapshotName = string.Empty;
 
     public MainWindowViewModel(
         IConversationRepository repository,
@@ -145,6 +150,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     public ObservableCollection<NoteItem> Notes { get; }
     public ObservableCollection<ContextPackItem> ContextItems { get; } = new();
     public ObservableCollection<GitChangedFile> GitChangedFiles { get; }
+    public ObservableCollection<WorkspaceSnapshotEntry> SnapshotEntries { get; } = new();
 
     public ICollectionView ConversationsView { get; }
 
@@ -360,6 +366,21 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     public string ProjectFilePreviewText { get => projectFilePreviewText; private set => SetProperty(ref projectFilePreviewText, value); }
     public int ProjectFileCount { get; private set; }
     public string NewNoteName { get => newNoteName; set => SetProperty(ref newNoteName, value); }
+    public WorkspaceSnapshotEntry? SelectedSnapshot
+    {
+        get => selectedSnapshot;
+        set
+        {
+            if (!SetProperty(ref selectedSnapshot, value)) return;
+            OnPropertyChanged(nameof(CanRestoreSnapshot));
+            OnPropertyChanged(nameof(CanRenameSnapshot));
+            OnPropertyChanged(nameof(CanDeleteSnapshot));
+        }
+    }
+    public bool CanRestoreSnapshot => SelectedSnapshot?.Snapshot is not null;
+    public bool CanRenameSnapshot => SelectedSnapshot?.Snapshot is not null;
+    public bool CanDeleteSnapshot => SelectedSnapshot is not null;
+    public string SnapshotName { get => snapshotName; set => SetProperty(ref snapshotName, value); }
     public NoteItem? SelectedNote { get; set; }
     public string GitBranch
     {
@@ -905,15 +926,30 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
 
     public void SelectProjectFile(string path)
     {
+        selectedProjectFilePath = null;
         try
         {
             var info = new FileInfo(path);
             ProjectFilePreviewTitle = info.Name;
+            if (!info.Exists || (info.Attributes & FileAttributes.Directory) != 0) { ProjectFilePreviewText = "无法读取文件"; return; }
             if (info.Length > 512 * 1024) { ProjectFilePreviewText = "文件过大"; return; }
             var allowed = new[] { ".txt", ".md", ".json", ".cs", ".cpp", ".h" };
-            ProjectFilePreviewText = allowed.Contains(info.Extension, StringComparer.OrdinalIgnoreCase) ? File.ReadAllText(path) : "Unsupported file type";
+            if (!allowed.Contains(info.Extension, StringComparer.OrdinalIgnoreCase)) { ProjectFilePreviewText = "不支持的文件类型"; return; }
+            ProjectFilePreviewText = File.ReadAllText(path);
+            selectedProjectFilePath = info.FullName;
         }
         catch (Exception exception) { ProjectFilePreviewText = $"无法读取文件：{exception.Message}"; }
+    }
+
+    public void AddSelectedProjectFileToContext()
+    {
+        if (string.IsNullOrWhiteSpace(selectedProjectFilePath))
+        {
+            StatusText = "请先选择可加入上下文的文件。";
+            return;
+        }
+
+        AddProjectFileToContext(selectedProjectFilePath);
     }
 
     public void GenerateProjectContext()
@@ -941,10 +977,39 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     public void AddProjectFileToContext(string path)
     {
         if (SelectedWorkspace is null) return;
-        var info = new FileInfo(path); if (info.Length > 512 * 1024) { StatusText = "文件过大，无法添加到上下文"; return; }
-        var allowed = new[] { ".txt", ".md", ".json", ".cs", ".cpp", ".h" }; if (!allowed.Contains(info.Extension, StringComparer.OrdinalIgnoreCase)) return;
-        var content = File.ReadAllText(path); var relative = Path.GetRelativePath(SelectedWorkspace.Path, path); var key = ContextPackService.CreateKey("ProjectFile", relative, $"{relative}|{info.LastWriteTimeUtc:O}", content);
-        AddContextItem(new ContextPackItem("ProjectFile", $"File · {relative}", "Workspace", content, relative, ContextItems.Count, key));
+        try
+        {
+            if (!TryCreateProjectFileContext(SelectedWorkspace, path, out var item, out var error)) { StatusText = error; return; }
+            if (ContextItems.Any(existing => existing.Type == "ProjectFile" && string.Equals(existing.ReferencePath, item.ReferencePath, StringComparison.OrdinalIgnoreCase))) { StatusText = $"已存在于上下文：{Path.GetFileName(path)}"; return; }
+            AddContextItem(item with { Order = ContextItems.Count });
+            StatusText = $"已加入上下文：{Path.GetFileName(path)}";
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            StatusText = $"无法将文件加入上下文：{exception.Message}";
+        }
+    }
+
+    public static bool TryCreateProjectFileContext(WorkspaceItem workspace, string path, out ContextPackItem item, out string error)
+    {
+        item = default!;
+        error = string.Empty;
+        try
+        {
+            var info = new FileInfo(path);
+            if (!info.Exists || (info.Attributes & FileAttributes.Directory) != 0) { error = "无法将目录加入上下文"; return false; }
+            if (info.Length > 512 * 1024) { error = "文件过大，无法添加到上下文"; return false; }
+            var allowed = new[] { ".txt", ".md", ".json", ".cs", ".cpp", ".h" }; if (!allowed.Contains(info.Extension, StringComparer.OrdinalIgnoreCase)) { error = "不支持的文件类型，无法加入上下文"; return false; }
+            var relative = Path.GetRelativePath(workspace.Path, info.FullName);
+            var content = File.ReadAllText(info.FullName); var key = ContextPackService.CreateKey("ProjectFile", relative, $"{relative}|{info.LastWriteTimeUtc:O}", content);
+            item = new ContextPackItem("ProjectFile", $"File · {relative}", "Workspace", content, relative, 0, key);
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            error = $"无法将文件加入上下文：{exception.Message}";
+            return false;
+        }
     }
 
     public async Task AddGitDiffToContextAsync(GitChangedFile file)
@@ -994,6 +1059,145 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         var owner = Application.Current.MainWindow;
         var window = new Window { Title = (string)(Application.Current.FindResource("UiNotesWindowTitle") ?? "Codex Bridge 笔记"), Width = 640, Height = 520, Owner = owner, Content = new NotesView { DataContext = this }, WindowStartupLocation = WindowStartupLocation.CenterOwner };
         window.ShowDialog();
+    }
+
+    public void OpenSnapshotsWindow()
+    {
+        RefreshSnapshots();
+        var owner = Application.Current.MainWindow;
+        var window = new Window
+        {
+            Title = (string)(Application.Current.FindResource("UiSnapshotsWindowTitle") ?? "Codex Bridge 工作现场"),
+            Width = 720,
+            Height = 560,
+            Owner = owner,
+            Content = new SnapshotView { DataContext = this },
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+        };
+        window.ShowDialog();
+    }
+
+    public void RefreshSnapshots()
+    {
+        SnapshotEntries.Clear();
+        if (SelectedWorkspace is null) return;
+        foreach (var entry in snapshotService.List(SelectedWorkspace.Path)) SnapshotEntries.Add(entry);
+    }
+
+    public async Task<bool> SaveCurrentSnapshotAsync(string requestedName)
+    {
+        if (SelectedWorkspace is null) { StatusText = "请先选择工作区。"; return false; }
+        var now = DateTimeOffset.Now;
+        var name = string.IsNullOrWhiteSpace(requestedName) ? (string.IsNullOrWhiteSpace(HandoffTitle) ? CurrentSessionTitle : HandoffTitle) : requestedName.Trim();
+        if (string.IsNullOrWhiteSpace(name) || name == UiStrings.NoSession) name = $"{now:yyyy-MM-dd HH:mm} 工作现场";
+        // Capture only the current visible session's row state before any asynchronous Git read.
+        var selections = BuildSnapshotSelections();
+        var git = await BuildSnapshotGitAsync();
+        var snapshot = new WorkspaceSnapshot
+        {
+            SnapshotId = $"{now:yyyyMMdd-HHmmss}-{Guid.NewGuid().ToString("N")[..8]}",
+            Name = name,
+            CreatedAt = now,
+            UpdatedAt = now,
+            Workspace = new WorkspaceSnapshotWorkspace { Name = SelectedWorkspace.Name, Path = SelectedWorkspace.Path },
+            Selection = selections,
+            ContextItems = ContextItems.Select(item => new WorkspaceSnapshotContextItem { Key = item.Key, Type = item.Type, Title = item.Title, Content = item.Content, Source = item.Source, ReferencePath = item.ReferencePath, Order = item.Order }).ToList(),
+            Handoff = new WorkspaceSnapshotHandoff { Target = HandoffTarget, Template = HandoffTemplate, Title = HandoffTitle, Task = HandoffTask, CurrentState = HandoffCurrentState, Constraints = HandoffConstraints, NextAction = HandoffNextAction, IncludeContextPack = IncludeHandoffContext, IncludeWorkspace = IncludeHandoffWorkspace, IncludeGitState = IncludeHandoffGit, IncludeProjectFileSummary = IncludeHandoffProjectFiles },
+            Git = git,
+        };
+        snapshotService.Save(SelectedWorkspace.Path, snapshot);
+        RefreshSnapshots();
+        StatusText = "工作现场已保存。";
+        return true;
+    }
+
+    public async Task<bool> RestoreSelectedSnapshotAsync()
+    {
+        if (SelectedWorkspace is null || SelectedSnapshot?.Snapshot is null) return false;
+        if ((ContextItems.Count > 0 || HandoffPreviewText.Length > 0) && MessageBox.Show("当前上下文或交接内容将被替换。\n\n是否继续恢复工作现场？", "恢复工作现场", MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK) return false;
+        var snapshot = SelectedSnapshot.Snapshot;
+        WorkspaceSnapshotService.Validate(snapshot);
+        if (!WorkspaceSnapshotService.IsWorkspaceMatch(snapshot, SelectedWorkspace.Path))
+        {
+            StatusText = "工作现场属于其它工作区，无法恢复。";
+            return false;
+        }
+        var currentGit = await BuildSnapshotGitAsync();
+        var missing = ApplySnapshot(snapshot);
+        var gitWarning = WorkspaceSnapshotService.CompareGit(snapshot.Git, currentGit);
+        var warning = gitWarning is null ? string.Empty : $" 当前 Git 状态与保存现场时不同：{gitWarning}";
+        StatusText = $"工作现场已恢复。恢复轮次：{snapshot.Selection.Count - missing}，缺失轮次：{missing}。{warning}";
+        return true;
+    }
+
+    public void RenameSelectedSnapshot(string name)
+    {
+        if (SelectedWorkspace is null || SelectedSnapshot?.Snapshot is null || string.IsNullOrWhiteSpace(name)) return;
+        var snapshotId = SelectedSnapshot.Snapshot.SnapshotId;
+        snapshotService.Rename(SelectedWorkspace.Path, snapshotId, name.Trim());
+        RefreshSnapshots();
+        SelectedSnapshot = SnapshotEntries.FirstOrDefault(entry => entry.Snapshot?.SnapshotId == snapshotId);
+        StatusText = UiStrings.SnapshotRenamed;
+    }
+
+    public bool DeleteSelectedSnapshot(Func<WorkspaceSnapshotEntry, bool> confirmDelete)
+    {
+        if (SelectedWorkspace is null || SelectedSnapshot is null) return false;
+        var entry = SelectedSnapshot;
+        if (!confirmDelete(entry)) return false;
+        snapshotService.DeleteDirectory(SelectedWorkspace.Path, entry.DirectoryPath);
+        RefreshSnapshots();
+        SelectedSnapshot = null;
+        StatusText = UiStrings.SnapshotDeleted;
+        return true;
+    }
+
+    private List<WorkspaceSnapshotSelection> BuildSnapshotSelections()
+    {
+        var source = SourceIndex == 0 ? "ChatGPT" : "Codex";
+        var sessionId = SourceIndex == 0 ? selectedConversation?.Conversation.Id.ToString() : selectedCodexThread?.Thread.Id;
+        return CaptureSelectedTurnRefs(source, sessionId, Turns);
+    }
+
+    public static List<WorkspaceSnapshotSelection> CaptureSelectedTurnRefs(string source, string? sessionId, IEnumerable<TurnRowViewModel> rows)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId)) return [];
+        return rows.Where(row => row.IsSelected).Select(row => new WorkspaceSnapshotSelection
+        {
+            Source = source,
+            SessionId = sessionId,
+            TurnId = row.Turn.Id,
+            Role = "User",
+            TextHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(row.Turn.User.Text))),
+        }).ToList();
+    }
+
+    private async Task<WorkspaceSnapshotGit> BuildSnapshotGitAsync()
+    {
+        if (SelectedWorkspace is null || !EnableGitIntegration) return new();
+        var service = new GitService();
+        var status = await service.GetStatusAsync(SelectedWorkspace.Path);
+        if (!status.GitAvailable) return new();
+        var head = await service.GetHeadCommitAsync(SelectedWorkspace.Path);
+        var files = status.Files.Select(file => new WorkspaceSnapshotChangedFile { Status = file.Status, RelativePath = file.Path }).ToList();
+        return new WorkspaceSnapshotGit { Branch = status.Branch, HeadCommit = head, ChangedFiles = files, StatusFingerprint = WorkspaceSnapshotService.BuildStatusFingerprint(status.Branch, head, files) };
+    }
+
+    private int ApplySnapshot(WorkspaceSnapshot snapshot)
+    {
+        var source = SourceIndex == 0 ? "ChatGPT" : "Codex";
+        var sessionId = SourceIndex == 0 ? selectedConversation?.Conversation.Id.ToString() : selectedCodexThread?.Thread.Id;
+        var selected = snapshot.Selection.Where(item => item.Source == source && item.SessionId == sessionId).ToDictionary(item => item.TurnId, StringComparer.Ordinal);
+        var missing = snapshot.Selection.Count(item => item.Source != source || item.SessionId != sessionId);
+        preserveDraftDuringSelectionClear = true;
+        foreach (var row in Turns) row.IsSelected = selected.ContainsKey(row.Turn.Id);
+        missing += snapshot.Selection.Count(item => item.Source == source && item.SessionId == sessionId && !Turns.Any(row => row.Turn.Id == item.TurnId));
+        preserveDraftDuringSelectionClear = false;
+        ContextItems.Clear();
+        foreach (var item in snapshot.ContextItems.OrderBy(item => item.Order)) ContextItems.Add(new ContextPackItem(item.Type, item.Title, item.Source ?? string.Empty, item.Content, item.ReferencePath, item.Order, item.Key));
+        HandoffTarget = snapshot.Handoff.Target; HandoffTemplate = snapshot.Handoff.Template; HandoffTitle = snapshot.Handoff.Title; HandoffTask = snapshot.Handoff.Task; HandoffCurrentState = snapshot.Handoff.CurrentState; HandoffConstraints = snapshot.Handoff.Constraints; HandoffNextAction = snapshot.Handoff.NextAction; IncludeHandoffContext = snapshot.Handoff.IncludeContextPack; IncludeHandoffWorkspace = snapshot.Handoff.IncludeWorkspace; IncludeHandoffGit = snapshot.Handoff.IncludeGitState; IncludeHandoffProjectFiles = snapshot.Handoff.IncludeProjectFileSummary;
+        UpdateDraft(); NotifyContext();
+        return missing;
     }
 
     public async Task RefreshGitStatusAsync()

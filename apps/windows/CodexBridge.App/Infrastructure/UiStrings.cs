@@ -13,6 +13,8 @@ public static class UiStrings
     public const string NoSession = "暂无会话";
     public const string NoDraft = "暂无草稿";
     public const string NoContext = "暂无上下文";
+    public const string SnapshotRenamed = "工作现场已重命名。";
+    public const string SnapshotDeleted = "工作现场已删除。";
 
     public static string CopyFailed(string reason) => $"复制失败：{reason}";
     public static string Exported(string path) => $"已导出：{path}";
@@ -26,6 +28,14 @@ public static class UiStrings
         "Small" => "小",
         "Medium" => "中",
         "Large" => "大",
+        _ => value,
+    };
+    public static string HandoffTemplateName(string value) => value switch
+    {
+        "Continue Task" => "继续任务",
+        "Debug Issue" => "调试问题",
+        "Review Changes" => "审查更改",
+        "Plan Next Step" => "规划下一步",
         _ => value,
     };
     public static string Workspace(string name) => $"工作区：{name}";

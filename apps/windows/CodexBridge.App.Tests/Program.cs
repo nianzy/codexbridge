@@ -42,6 +42,27 @@ var tests = new (string Name, Func<Task> Test)[]
     ("localized UI strings and handoff content", LocalizedUiStringsAsync),
     ("localized size and character labels", LocalizedSizeLabelsAsync),
     ("dark control styles are defined", DarkControlStylesAreDefinedAsync),
+    ("workspace snapshot round trips", WorkspaceSnapshotRoundTripAsync),
+    ("workspace snapshot rejects newer schema", WorkspaceSnapshotRejectsNewerSchemaAsync),
+    ("workspace snapshot rename preserves id", WorkspaceSnapshotRenamePreservesIdAsync),
+    ("workspace snapshot lists corrupt entries safely", WorkspaceSnapshotListsCorruptEntriesAsync),
+    ("workspace snapshot fingerprint is stable", WorkspaceSnapshotFingerprintAsync),
+    ("workspace snapshot delete is scoped", WorkspaceSnapshotDeleteIsScopedAsync),
+    ("workspace snapshot corrupt delete is scoped", WorkspaceSnapshotCorruptDeleteIsScopedAsync),
+    ("workspace snapshot corrupt delete cancel preserves entry", WorkspaceSnapshotCorruptDeleteCancelAsync),
+    ("workspace snapshot delete rejects invalid directory", WorkspaceSnapshotDeleteRejectsInvalidDirectoryAsync),
+    ("workspace snapshot summary is complete", WorkspaceSnapshotSummaryIsCompleteAsync),
+    ("workspace snapshot summary preserves creation time", WorkspaceSnapshotSummaryTimeSemanticsAsync),
+    ("workspace snapshot summary localizes template names", WorkspaceSnapshotSummaryTemplateNamesAsync),
+    ("workspace snapshot workspace affinity is enforced", WorkspaceSnapshotWorkspaceAffinityAsync),
+    ("workspace snapshot schema zero is rejected", WorkspaceSnapshotRejectsLowerSchemaAsync),
+    ("workspace snapshot git verification reports precise mismatch", WorkspaceSnapshotGitVerificationAsync),
+    ("workspace snapshot JSON has no sensitive schema fields", WorkspaceSnapshotSensitiveSchemaAsync),
+    ("snapshot UI has empty state and selection guards", SnapshotUiBindingsAsync),
+    ("snapshot rename dialog is localized", SnapshotRenameDialogIsLocalizedAsync),
+    ("project file context adds selected file", ProjectFileContextAddsSelectedFileAsync),
+    ("project file context rejects directory and read failure", ProjectFileContextRejectsInvalidSelectionAsync),
+    ("snapshot captures only selected visible turns", SnapshotCapturesOnlySelectedTurnsAsync),
     ("handoff embeds context and git state", HandoffContextAndGitRenderAsync),
     ("handoff keeps normal user task", HandoffNormalTaskAsync),
     ("handoff removes attachment wrapper and path", HandoffAttachmentWrapperAsync),
@@ -684,6 +705,288 @@ static Task DarkControlStylesAreDefinedAsync()
     Assert(styles.Contains("TargetType=\"CheckBox\"", StringComparison.Ordinal) && strings.Contains("UiSmall", StringComparison.Ordinal), "checkbox or size resources missing");
     return Task.CompletedTask;
 }
+
+static async Task WorkspaceSnapshotRoundTripAsync()
+{
+    var root = Path.Combine(Path.GetTempPath(), $"codexbridge-snapshot-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(root);
+    try
+    {
+        var service = new WorkspaceSnapshotService();
+        var snapshot = SampleSnapshot("snap-1");
+        service.Save(root, snapshot);
+        var loaded = service.Load(Path.Combine(WorkspaceSnapshotService.GetRoot(root), snapshot.SnapshotId));
+        Assert(loaded.ContextItems.Count == 3 && loaded.ContextItems[0].Content == "body" && loaded.ContextItems[1].ReferencePath == "README.md" && loaded.ContextItems[2].Type == "GitDiff", "context items did not round trip");
+        Assert(loaded.Handoff.Target == "ChatGPT" && loaded.Handoff.Template == "Debug Issue" && loaded.Handoff.IncludeGitState && loaded.Handoff.NextAction == "next", "handoff fields did not round trip");
+        Assert(loaded.Selection.Count == 2 && loaded.Selection[1].Source == "Codex" && loaded.Selection[1].TextHash == "hash-2", "selected references did not round trip");
+        Assert(File.Exists(Path.Combine(WorkspaceSnapshotService.GetRoot(root), snapshot.SnapshotId, "summary.md")), "summary was not written");
+        Assert(!File.Exists(Path.Combine(WorkspaceSnapshotService.GetRoot(root), snapshot.SnapshotId, "snapshot.json.tmp")) && !File.Exists(Path.Combine(WorkspaceSnapshotService.GetRoot(root), snapshot.SnapshotId, "summary.md.tmp")), "temporary snapshot file remained");
+    }
+    finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    await Task.CompletedTask;
+}
+
+static Task WorkspaceSnapshotRejectsNewerSchemaAsync()
+{
+    var snapshot = SampleSnapshot("future") with { SchemaVersion = WorkspaceSnapshotService.CurrentSchemaVersion + 1 };
+    try { WorkspaceSnapshotService.Validate(snapshot); throw new InvalidOperationException("newer schema was accepted"); }
+    catch (InvalidDataException exception) { Assert(exception.Message.Contains("更新版本", StringComparison.Ordinal), "newer schema warning missing"); }
+    return Task.CompletedTask;
+}
+
+static async Task WorkspaceSnapshotRenamePreservesIdAsync()
+{
+    var root = Path.Combine(Path.GetTempPath(), $"codexbridge-snapshot-{Guid.NewGuid():N}"); Directory.CreateDirectory(root);
+    try
+    {
+        var service = new WorkspaceSnapshotService(); var snapshot = SampleSnapshot("stable-id"); service.Save(root, snapshot); var renamed = service.Rename(root, snapshot.SnapshotId, "新名称");
+        var loaded = service.Load(Path.Combine(WorkspaceSnapshotService.GetRoot(root), snapshot.SnapshotId));
+        Assert(loaded.SnapshotId == "stable-id" && loaded.Name == "新名称" && loaded.CreatedAt == snapshot.CreatedAt && renamed.UpdatedAt >= snapshot.UpdatedAt, "rename changed immutable snapshot fields");
+    }
+    finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    await Task.CompletedTask;
+}
+
+static Task WorkspaceSnapshotListsCorruptEntriesAsync()
+{
+    var root = Path.Combine(Path.GetTempPath(), $"codexbridge-snapshot-{Guid.NewGuid():N}"); Directory.CreateDirectory(Path.Combine(root, ".ai", "snapshots", "bad"));
+    try
+    {
+        File.WriteAllText(Path.Combine(root, ".ai", "snapshots", "bad", "snapshot.json"), "{");
+        var entries = new WorkspaceSnapshotService().List(root);
+        Assert(entries.Count == 1 && entries[0].Snapshot is null && entries[0].Error is not null, "corrupt snapshot was not isolated");
+    }
+    finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    return Task.CompletedTask;
+}
+
+static Task WorkspaceSnapshotFingerprintAsync()
+{
+    var files = new[] { new WorkspaceSnapshotChangedFile { Status = "M", RelativePath = "a.cs" }, new WorkspaceSnapshotChangedFile { Status = "A", RelativePath = "b.cs" } };
+    var first = WorkspaceSnapshotService.BuildStatusFingerprint("main", "abc", files);
+    var second = WorkspaceSnapshotService.BuildStatusFingerprint("main", "abc", files.Reverse());
+    var changed = WorkspaceSnapshotService.BuildStatusFingerprint("feature", "abc", files);
+    Assert(first == second && first != changed, "git fingerprint was not canonical");
+    return Task.CompletedTask;
+}
+
+static async Task WorkspaceSnapshotDeleteIsScopedAsync()
+{
+    var root = Path.Combine(Path.GetTempPath(), $"codexbridge-snapshot-{Guid.NewGuid():N}"); Directory.CreateDirectory(root);
+    try { var service = new WorkspaceSnapshotService(); service.Save(root, SampleSnapshot("a")); service.Save(root, SampleSnapshot("b")); service.Delete(root, "a"); var entries = service.List(root); Assert(entries.Count == 1 && entries[0].Snapshot?.SnapshotId == "b" && Directory.Exists(WorkspaceSnapshotService.GetRoot(root)), "delete was not scoped to one snapshot"); }
+    finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    await Task.CompletedTask;
+}
+
+static Task WorkspaceSnapshotCorruptDeleteIsScopedAsync()
+{
+    var root = Path.Combine(Path.GetTempPath(), $"codexbridge-snapshot-{Guid.NewGuid():N}");
+    var service = new WorkspaceSnapshotService();
+    try
+    {
+        service.Save(root, SampleSnapshot("valid-a"));
+        Directory.CreateDirectory(Path.Combine(WorkspaceSnapshotService.GetRoot(root), "corrupt-b"));
+        File.WriteAllText(Path.Combine(WorkspaceSnapshotService.GetRoot(root), "corrupt-b", "snapshot.json"), "{ invalid");
+        service.Save(root, SampleSnapshot("valid-c"));
+        var corrupt = service.List(root).Single(entry => entry.Snapshot is null);
+        service.DeleteDirectory(root, corrupt.DirectoryPath);
+        var remaining = service.List(root);
+        Assert(!Directory.Exists(corrupt.DirectoryPath), "corrupt snapshot directory was not deleted");
+        Assert(Directory.Exists(WorkspaceSnapshotService.GetRoot(root)), "snapshots root was deleted");
+        Assert(remaining.Count == 2 && remaining.All(entry => entry.Snapshot is not null) && remaining.Select(entry => entry.Snapshot!.SnapshotId).ToHashSet().SetEquals(["valid-a", "valid-c"]), "valid snapshots were not preserved or corrupt entry remained");
+    }
+    finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    return Task.CompletedTask;
+}
+
+static async Task WorkspaceSnapshotCorruptDeleteCancelAsync()
+{
+    var previousOverride = Environment.GetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH");
+    await using var scope = await TestScope.CreateAsync();
+    try
+    {
+        Environment.SetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH", Path.Combine(scope.Root, "workspaces.json"));
+        await using var importer = new CaptureInboxImporter(scope.Repository, inboxDirectory: scope.Inbox);
+        await using var viewModel = new MainWindowViewModel(scope.Repository, importer, FakeCodexClient.Success());
+        var workspace = new WorkspaceItem("fixture", scope.Root, DateTimeOffset.UtcNow);
+        viewModel.Workspaces.Add(workspace);
+        Assert(viewModel.TrySwitchWorkspace(workspace, requireConfirmation: false), "workspace setup failed");
+        var corruptDirectory = Path.Combine(WorkspaceSnapshotService.GetRoot(scope.Root), "corrupt-cancel");
+        Directory.CreateDirectory(corruptDirectory);
+        File.WriteAllText(Path.Combine(corruptDirectory, "snapshot.json"), "{ invalid");
+        viewModel.RefreshSnapshots();
+        viewModel.SelectedSnapshot = viewModel.SnapshotEntries.Single(entry => entry.Snapshot is null);
+        Assert(!viewModel.DeleteSelectedSnapshot(_ => false), "cancelled corrupt delete reported success");
+        Assert(Directory.Exists(corruptDirectory) && viewModel.SnapshotEntries.Count == 1, "cancelled corrupt delete changed the entry");
+    }
+    finally
+    {
+        Environment.SetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH", previousOverride);
+    }
+}
+
+static Task WorkspaceSnapshotDeleteRejectsInvalidDirectoryAsync()
+{
+    var root = Path.Combine(Path.GetTempPath(), $"codexbridge-snapshot-{Guid.NewGuid():N}");
+    var service = new WorkspaceSnapshotService();
+    try
+    {
+        var snapshotsRoot = WorkspaceSnapshotService.GetRoot(root);
+        Directory.CreateDirectory(snapshotsRoot);
+        foreach (var invalid in new[] { snapshotsRoot, Path.Combine(root, "outside"), Path.Combine(snapshotsRoot, "..", "outside") })
+        {
+            try { service.DeleteDirectory(root, invalid); throw new InvalidOperationException("invalid snapshot delete path was accepted"); }
+            catch (InvalidDataException) { }
+        }
+    }
+    finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    return Task.CompletedTask;
+}
+
+static Task WorkspaceSnapshotSummaryIsCompleteAsync()
+{
+    var summary = WorkspaceSnapshotService.RenderSummary(SampleSnapshot("summary"));
+    foreach (var section in new[] { "# 工作现场", "名称：", "保存时间：", "更新时间：", "工作区：", "## 当前任务", "## 当前状态", "## 下一步", "## 上下文", "## Git", "## 交接" }) Assert(summary.Contains(section, StringComparison.Ordinal), $"summary section missing: {section}");
+    return Task.CompletedTask;
+}
+
+static Task WorkspaceSnapshotSummaryTimeSemanticsAsync()
+{
+    var created = new DateTimeOffset(2026, 9, 29, 14, 2, 28, TimeSpan.FromHours(8));
+    var updated = new DateTimeOffset(2026, 9, 29, 14, 37, 46, TimeSpan.FromHours(8));
+    var summary = WorkspaceSnapshotService.RenderSummary(SampleSnapshot("time") with { CreatedAt = created, UpdatedAt = updated });
+    Assert(summary.Contains("保存时间：2026-09-29 14:02", StringComparison.Ordinal), "summary save time did not use CreatedAt");
+    Assert(summary.Contains("更新时间：2026-09-29 14:37", StringComparison.Ordinal), "summary update time did not use UpdatedAt");
+    Assert(!summary.Contains("保存时间：2026-09-29 14:37", StringComparison.Ordinal), "summary save time changed with UpdatedAt");
+    return Task.CompletedTask;
+}
+
+static Task WorkspaceSnapshotSummaryTemplateNamesAsync()
+{
+    var expected = new Dictionary<string, string>
+    {
+        ["Continue Task"] = "继续任务",
+        ["Debug Issue"] = "调试问题",
+        ["Review Changes"] = "审查更改",
+        ["Plan Next Step"] = "规划下一步",
+    };
+    foreach (var pair in expected)
+    {
+        var summary = WorkspaceSnapshotService.RenderSummary(SampleSnapshot("template") with { Handoff = new WorkspaceSnapshotHandoff { Template = pair.Key } });
+        Assert(summary.Contains($"模板：{pair.Value}", StringComparison.Ordinal), $"summary template name missing: {pair.Key}");
+        Assert(!summary.Contains($"模板：{pair.Key}", StringComparison.Ordinal), $"internal template key leaked: {pair.Key}");
+    }
+    return Task.CompletedTask;
+}
+
+static Task WorkspaceSnapshotWorkspaceAffinityAsync()
+{
+    var snapshot = SampleSnapshot("affinity");
+    Assert(WorkspaceSnapshotService.IsWorkspaceMatch(snapshot, "C:\\fixture"), "matching workspace rejected");
+    Assert(!WorkspaceSnapshotService.IsWorkspaceMatch(snapshot, "C:\\other"), "cross-workspace snapshot accepted");
+    return Task.CompletedTask;
+}
+
+static Task WorkspaceSnapshotRejectsLowerSchemaAsync()
+{
+    try { WorkspaceSnapshotService.Validate(SampleSnapshot("old") with { SchemaVersion = 0 }); throw new InvalidOperationException("lower schema was accepted"); }
+    catch (InvalidDataException exception) { Assert(exception.Message.Contains("不支持", StringComparison.Ordinal), "lower schema message missing"); }
+    return Task.CompletedTask;
+}
+
+static Task WorkspaceSnapshotGitVerificationAsync()
+{
+    var saved = new WorkspaceSnapshotGit { Branch = "main", HeadCommit = "abc", StatusFingerprint = "xyz" };
+    Assert(WorkspaceSnapshotService.CompareGit(saved, saved) is null, "matching Git state produced warning");
+    Assert(WorkspaceSnapshotService.CompareGit(saved, saved with { Branch = "feature" })?.Contains("分支", StringComparison.Ordinal) == true, "branch mismatch was not reported");
+    Assert(WorkspaceSnapshotService.CompareGit(saved, saved with { HeadCommit = "def" })?.Contains("HEAD", StringComparison.Ordinal) == true, "HEAD mismatch was not reported");
+    Assert(WorkspaceSnapshotService.CompareGit(saved, saved with { StatusFingerprint = "changed" })?.Contains("文件状态", StringComparison.Ordinal) == true, "status mismatch was not reported");
+    return Task.CompletedTask;
+}
+
+static async Task WorkspaceSnapshotSensitiveSchemaAsync()
+{
+    var root = Path.Combine(Path.GetTempPath(), $"codexbridge-snapshot-{Guid.NewGuid():N}"); Directory.CreateDirectory(root);
+    try { var service = new WorkspaceSnapshotService(); var snapshot = SampleSnapshot("privacy"); service.Save(root, snapshot); var json = File.ReadAllText(Path.Combine(WorkspaceSnapshotService.GetRoot(root), snapshot.SnapshotId, "snapshot.json")); foreach (var forbidden in new[] { "token", "accessToken", "refreshToken", "cookie", "credential", "password", "apiKey", "clipboard", "reasoning", "hiddenState", "environmentVariables" }) Assert(!json.Contains(forbidden, StringComparison.OrdinalIgnoreCase), $"sensitive field leaked: {forbidden}"); }
+    finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    await Task.CompletedTask;
+}
+
+static Task SnapshotUiBindingsAsync()
+{
+    var root = FindRepositoryRoot();
+    var xaml = File.ReadAllText(Path.Combine(root, "apps", "windows", "CodexBridge.App", "SnapshotView.xaml"));
+    var strings = File.ReadAllText(Path.Combine(root, "apps", "windows", "CodexBridge.App", "Themes", "Strings.xaml"));
+    Assert(strings.Contains("UiSnapshotNameLabel", StringComparison.Ordinal) && strings.Contains("暂无工作现场", StringComparison.Ordinal), "snapshot empty/name resources missing");
+    Assert(xaml.Contains("CanRestoreSnapshot", StringComparison.Ordinal) && xaml.Contains("CanRenameSnapshot", StringComparison.Ordinal) && xaml.Contains("CanDeleteSnapshot", StringComparison.Ordinal), "snapshot action enable bindings missing");
+    Assert(xaml.Contains("SnapshotEntries.Count", StringComparison.Ordinal), "snapshot empty state binding missing");
+    return Task.CompletedTask;
+}
+
+static Task SnapshotRenameDialogIsLocalizedAsync()
+{
+    var root = FindRepositoryRoot();
+    var xaml = File.ReadAllText(Path.Combine(root, "apps", "windows", "CodexBridge.App", "SnapshotRenameView.xaml"));
+    var code = File.ReadAllText(Path.Combine(root, "apps", "windows", "CodexBridge.App", "SnapshotRenameView.xaml.cs"));
+    var strings = File.ReadAllText(Path.Combine(root, "apps", "windows", "CodexBridge.App", "Themes", "Strings.xaml"));
+    Assert(strings.Contains("UiRenameSnapshotTitle", StringComparison.Ordinal) && strings.Contains("UiConfirm", StringComparison.Ordinal) && strings.Contains("UiCancel", StringComparison.Ordinal), "rename dialog resources missing");
+    Assert(xaml.Contains("UiConfirm", StringComparison.Ordinal) && xaml.Contains("UiCancel", StringComparison.Ordinal) && xaml.Contains("NameBoxLoaded", StringComparison.Ordinal), "rename dialog bindings missing");
+    Assert(code.Contains("UiSnapshotNameRequired", StringComparison.Ordinal), "empty rename validation missing");
+    return Task.CompletedTask;
+}
+
+static async Task ProjectFileContextAddsSelectedFileAsync()
+{
+    await using var scope = await TestScope.CreateAsync();
+    var file = Path.Combine(Environment.CurrentDirectory, $".codexbridge-project-file-{Guid.NewGuid():N}.md");
+    await File.WriteAllTextAsync(file, "# fixture agents");
+    try
+    {
+        var workspace = new WorkspaceItem("fixture", scope.Root, DateTimeOffset.Now);
+        Assert(MainWindowViewModel.TryCreateProjectFileContext(workspace, file, out var item, out _), "selected project file was not added");
+        Assert(item.Type == "ProjectFile" && item.Title.EndsWith(Path.GetFileName(file), StringComparison.Ordinal) && item.Content == "# fixture agents" && item.ReferencePath == Path.GetRelativePath(scope.Root, file), "project file context fields are incorrect");
+        var references = new HashSet<string>(StringComparer.OrdinalIgnoreCase); Assert(references.Add(item.ReferencePath!), "first project file add was rejected"); Assert(!references.Add(item.ReferencePath!), "duplicate project file was added twice");
+    }
+    finally { if (File.Exists(file)) File.Delete(file); }
+}
+
+static async Task ProjectFileContextRejectsInvalidSelectionAsync()
+{
+    await using var scope = await TestScope.CreateAsync();
+    var directory = Path.Combine(Environment.CurrentDirectory, $".codexbridge-project-dir-{Guid.NewGuid():N}"); Directory.CreateDirectory(directory);
+    var missing = Path.Combine(Environment.CurrentDirectory, $".codexbridge-missing-{Guid.NewGuid():N}.md");
+    try
+    {
+        var workspace = new WorkspaceItem("fixture", scope.Root, DateTimeOffset.Now);
+        Assert(!MainWindowViewModel.TryCreateProjectFileContext(workspace, directory, out _, out _), "directory produced context content");
+        Assert(!MainWindowViewModel.TryCreateProjectFileContext(workspace, missing, out _, out _), "missing file produced context content");
+    }
+    finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+}
+
+static Task SnapshotCapturesOnlySelectedTurnsAsync()
+{
+    var rows = Enumerable.Range(0, 5).Select(index => new TurnRowViewModel(new CapturedTurn { Id = $"turn-{index}", Index = index, User = new CapturedMessage { Id = $"user-{index}", IdSource = "fixture", Text = $"text-{index}" }, Complete = true }, index == 2, "用户", "ChatGPT")).ToList();
+    var refs = MainWindowViewModel.CaptureSelectedTurnRefs("ChatGPT", "session-1", rows);
+    Assert(refs.Count == 1 && refs[0].TurnId == "turn-2", "snapshot captured unselected visible turns");
+    var before = rows.Select(row => row.IsSelected).ToArray();
+    Assert(MainWindowViewModel.CaptureSelectedTurnRefs("ChatGPT", "session-1", rows).Count == 1, "clear/reselect capture did not remain one");
+    Assert(before.SequenceEqual(rows.Select(row => row.IsSelected)), "capture changed UI selection state");
+    Assert(MainWindowViewModel.CaptureSelectedTurnRefs("Codex", "thread-1", rows).Single().Source == "Codex", "source was not isolated");
+    rows.ForEach(row => row.IsSelected = false);
+    Assert(MainWindowViewModel.CaptureSelectedTurnRefs("ChatGPT", "session-1", rows).Count == 0, "empty selection was not captured as empty");
+    return Task.CompletedTask;
+}
+
+static WorkspaceSnapshot SampleSnapshot(string id) => new()
+{
+    SnapshotId = id, Name = "现场", CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow,
+    Workspace = new WorkspaceSnapshotWorkspace { Name = "fixture", Path = "C:\\fixture" },
+    Selection = [new WorkspaceSnapshotSelection { Source = "ChatGPT", SessionId = "session-1", TurnId = "turn-1", Role = "User", TextHash = "hash-1" }, new WorkspaceSnapshotSelection { Source = "Codex", SessionId = "thread-1", TurnId = "turn-2", Role = "User", TextHash = "hash-2" }],
+    ContextItems = [new WorkspaceSnapshotContextItem { Key = "key-1", Type = "ConversationTurn", Title = "title-1", Content = "body", Source = "ChatGPT", Order = 0 }, new WorkspaceSnapshotContextItem { Key = "key-2", Type = "ProjectFile", Title = "title-2", Content = "file", Source = "Project Explorer", ReferencePath = "README.md", Order = 1 }, new WorkspaceSnapshotContextItem { Key = "key-3", Type = "GitDiff", Title = "title-3", Content = "diff", Source = "Git", ReferencePath = "Program.cs", Order = 2 }],
+    Handoff = new WorkspaceSnapshotHandoff { Target = "ChatGPT", Template = "Debug Issue", Title = "title", Task = "task", CurrentState = "state", Constraints = "constraints", NextAction = "next", IncludeContextPack = true, IncludeWorkspace = true, IncludeGitState = true, IncludeProjectFileSummary = true },
+    Git = new WorkspaceSnapshotGit { Branch = "main", HeadCommit = "abc" },
+};
 
 static string FindRepositoryRoot()
 {

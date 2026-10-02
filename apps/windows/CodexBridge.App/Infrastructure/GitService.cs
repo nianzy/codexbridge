@@ -35,6 +35,9 @@ public sealed class GitService
         return Encoding.UTF8.GetByteCount(diff) > 1024 * 1024 ? "Diff too large" : diff;
     }
 
+    public async Task<string> GetHeadCommitAsync(string workspace, CancellationToken cancellationToken = default) =>
+        (await RunAsync(workspace, ["rev-parse", "HEAD"], cancellationToken)).Trim();
+
     public static IReadOnlyList<GitChangedFile> ParseStatus(string output) => output
         .Replace("\r\n", "\n")
         .Split('\n', StringSplitOptions.RemoveEmptyEntries)

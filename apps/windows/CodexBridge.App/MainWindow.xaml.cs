@@ -94,6 +94,8 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OpenSnapshotsClick(object sender, RoutedEventArgs e) => viewModel.OpenSnapshotsWindow();
+
     private void OpenWorkspaceClick(object sender, RoutedEventArgs e)
     {
         var window = new Window
