@@ -373,11 +373,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         {
             if (!SetProperty(ref selectedSnapshot, value)) return;
             OnPropertyChanged(nameof(CanRestoreSnapshot));
+            OnPropertyChanged(nameof(CanPreviewSnapshot));
             OnPropertyChanged(nameof(CanRenameSnapshot));
             OnPropertyChanged(nameof(CanDeleteSnapshot));
         }
     }
     public bool CanRestoreSnapshot => SelectedSnapshot?.Snapshot is not null;
+    public bool CanPreviewSnapshot => SelectedSnapshot?.Snapshot is not null;
     public bool CanRenameSnapshot => SelectedSnapshot?.Snapshot is not null;
     public bool CanDeleteSnapshot => SelectedSnapshot is not null;
     public string SnapshotName { get => snapshotName; set => SetProperty(ref snapshotName, value); }
@@ -1130,6 +1132,26 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         return true;
     }
 
+    public async Task<SnapshotPreviewModel?> BuildSelectedSnapshotPreviewAsync()
+    {
+        if (SelectedWorkspace is null || SelectedSnapshot?.Snapshot is null) return null;
+        var snapshot = SelectedSnapshot.Snapshot;
+        var currentWorkspace = SelectedWorkspace;
+        var current = new SnapshotPreviewCurrentState
+        {
+            WorkspaceName = currentWorkspace.Name,
+            WorkspacePath = currentWorkspace.Path,
+            Source = SourceIndex == 0 ? "ChatGPT" : "Codex",
+            SessionId = SourceIndex == 0 ? selectedConversation?.Conversation.Id.ToString() : selectedCodexThread?.Thread.Id,
+            VisibleTurnIds = Turns.Select(row => row.Turn.Id).ToHashSet(StringComparer.Ordinal),
+            SelectedTurnCount = Turns.Count(row => row.IsSelected),
+            ContextCount = ContextItems.Count,
+            HandoffTitle = HandoffTitle,
+            Git = await BuildSnapshotGitAsync(currentWorkspace.Path),
+        };
+        return SnapshotPreviewBuilder.Build(snapshot, current);
+    }
+
     public void RenameSelectedSnapshot(string name)
     {
         if (SelectedWorkspace is null || SelectedSnapshot?.Snapshot is null || string.IsNullOrWhiteSpace(name)) return;
@@ -1172,13 +1194,16 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         }).ToList();
     }
 
-    private async Task<WorkspaceSnapshotGit> BuildSnapshotGitAsync()
+    private async Task<WorkspaceSnapshotGit> BuildSnapshotGitAsync() =>
+        SelectedWorkspace is null ? new() : await BuildSnapshotGitAsync(SelectedWorkspace.Path);
+
+    private async Task<WorkspaceSnapshotGit> BuildSnapshotGitAsync(string workspacePath)
     {
-        if (SelectedWorkspace is null || !EnableGitIntegration) return new();
+        if (!EnableGitIntegration) return new();
         var service = new GitService();
-        var status = await service.GetStatusAsync(SelectedWorkspace.Path);
+        var status = await service.GetStatusAsync(workspacePath);
         if (!status.GitAvailable) return new();
-        var head = await service.GetHeadCommitAsync(SelectedWorkspace.Path);
+        var head = await service.GetHeadCommitAsync(workspacePath);
         var files = status.Files.Select(file => new WorkspaceSnapshotChangedFile { Status = file.Status, RelativePath = file.Path }).ToList();
         return new WorkspaceSnapshotGit { Branch = status.Branch, HeadCommit = head, ChangedFiles = files, StatusFingerprint = WorkspaceSnapshotService.BuildStatusFingerprint(status.Branch, head, files) };
     }

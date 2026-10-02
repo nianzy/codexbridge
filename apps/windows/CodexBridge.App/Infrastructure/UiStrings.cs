@@ -15,6 +15,60 @@ public static class UiStrings
     public const string NoContext = "暂无上下文";
     public const string SnapshotRenamed = "工作现场已重命名。";
     public const string SnapshotDeleted = "工作现场已删除。";
+    public const string Same = "一致";
+    public const string Changed = "已变化";
+    public const string WillReplace = "将替换";
+    public const string Missing = "缺失";
+    public const string Unavailable = "不可比较";
+    public const string WorkspaceMismatch = "工作区不一致";
+    public const string Matchable = "可匹配";
+    public const string NotCurrentlyMatchable = "当前不可匹配";
+    public const string NotSet = "未设置";
+    public const string Yes = "是";
+    public const string No = "否";
+    public const string SnapshotWorkspaceMismatchRestoreBlocked = "此工作现场不能在当前工作区恢复。";
+    public const string CurrentGitDiffers = "当前 Git 状态与保存现场时不同";
+    public const string GitUnavailableReason = "当前工作区没有可比较的 Git 状态。";
+    public const string GitBranchChanged = "分支已变化";
+    public const string GitHeadChanged = "HEAD 已变化";
+    public const string GitWorkspaceStateChanged = "工作区文件状态已变化";
+    public const string WorkspaceLabel = "工作区";
+    public const string GitBranchLabel = "Git 分支";
+    public const string GitHeadLabel = "Git HEAD";
+    public const string GitWorkspaceStateLabel = "Git 工作区指纹";
+    public const string SelectedTurnsLabel = "选中轮次";
+    public const string ContextLabel = "上下文";
+    public const string HandoffTitleLabel = "交接标题";
+    public const string GitChangedFilesLabel = "变更文件";
+    public const string GitFingerprintLabel = "指纹";
+    public const string GitItemHeader = "项目";
+    public const string GitSnapshotHeader = "工作现场";
+    public const string GitCurrentHeader = "当前状态";
+
+    public static string DisplayRole(string? value) => value switch
+    {
+        "User" => "用户",
+        "Assistant" => "助手",
+        "System" => "系统",
+        _ => string.IsNullOrWhiteSpace(value) ? Unavailable : value,
+    };
+
+    public static string DisplayContextType(string? value) => value switch
+    {
+        "ProjectFile" => "项目文件",
+        "ConversationTurn" => "会话轮次",
+        "GitDiff" => "Git 差异",
+        "Note" => "笔记",
+        _ => string.IsNullOrWhiteSpace(value) ? Unavailable : value,
+    };
+
+    public static string DisplayContextTitle(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return Unavailable;
+        return value.StartsWith("File · ", StringComparison.Ordinal)
+            ? $"文件 · {value[7..]}"
+            : value;
+    }
 
     public static string CopyFailed(string reason) => $"复制失败：{reason}";
     public static string Exported(string path) => $"已导出：{path}";

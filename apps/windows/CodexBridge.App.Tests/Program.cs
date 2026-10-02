@@ -57,6 +57,14 @@ var tests = new (string Name, Func<Task> Test)[]
     ("workspace snapshot workspace affinity is enforced", WorkspaceSnapshotWorkspaceAffinityAsync),
     ("workspace snapshot schema zero is rejected", WorkspaceSnapshotRejectsLowerSchemaAsync),
     ("workspace snapshot git verification reports precise mismatch", WorkspaceSnapshotGitVerificationAsync),
+    ("snapshot preview compares workspace and git", SnapshotPreviewComparisonAsync),
+    ("snapshot preview matches visible turns", SnapshotPreviewSelectionAsync),
+    ("snapshot preview preserves metadata and handoff", SnapshotPreviewMetadataAsync),
+    ("snapshot preview is read only", SnapshotPreviewIsReadOnlyAsync),
+    ("snapshot preview UI is localized", SnapshotPreviewUiIsLocalizedAsync),
+    ("snapshot preview uses short hashes and headers", SnapshotPreviewShortDisplayAsync),
+    ("snapshot preview localizes display values", SnapshotPreviewLocalizedDisplayAsync),
+    ("snapshot preview handles unavailable git and workspace warning", SnapshotPreviewUnavailableGitAsync),
     ("workspace snapshot JSON has no sensitive schema fields", WorkspaceSnapshotSensitiveSchemaAsync),
     ("snapshot UI has empty state and selection guards", SnapshotUiBindingsAsync),
     ("snapshot rename dialog is localized", SnapshotRenameDialogIsLocalizedAsync),
@@ -901,6 +909,125 @@ static Task WorkspaceSnapshotGitVerificationAsync()
     Assert(WorkspaceSnapshotService.CompareGit(saved, saved with { Branch = "feature" })?.Contains("分支", StringComparison.Ordinal) == true, "branch mismatch was not reported");
     Assert(WorkspaceSnapshotService.CompareGit(saved, saved with { HeadCommit = "def" })?.Contains("HEAD", StringComparison.Ordinal) == true, "HEAD mismatch was not reported");
     Assert(WorkspaceSnapshotService.CompareGit(saved, saved with { StatusFingerprint = "changed" })?.Contains("文件状态", StringComparison.Ordinal) == true, "status mismatch was not reported");
+    return Task.CompletedTask;
+}
+
+static Task SnapshotPreviewComparisonAsync()
+{
+    var snapshot = SampleSnapshot("preview") with
+    {
+        Workspace = new WorkspaceSnapshotWorkspace { Name = "fixture", Path = "C:\\fixture" },
+        Git = new WorkspaceSnapshotGit { Branch = "main", HeadCommit = "abc", StatusFingerprint = "same" },
+    };
+    var current = new SnapshotPreviewCurrentState { WorkspaceName = "fixture", WorkspacePath = "C:\\fixture", Source = "Codex", SessionId = "thread-1", Git = snapshot.Git };
+    var model = SnapshotPreviewBuilder.Build(snapshot, current);
+    Assert(model.CanRestore && model.Comparisons[0].Status == UiStrings.Same && model.Git.Result == UiStrings.Same, "matching workspace or git was not recognized");
+    var mismatch = SnapshotPreviewBuilder.Build(snapshot, current with { WorkspaceName = "other", WorkspacePath = "C:\\other", Git = snapshot.Git with { Branch = "feature" } });
+    Assert(!mismatch.CanRestore && mismatch.WorkspaceAffinityMessage == UiStrings.SnapshotWorkspaceMismatchRestoreBlocked && mismatch.Comparisons[0].Status == UiStrings.WorkspaceMismatch, "workspace mismatch did not disable restore");
+    Assert(mismatch.Git.Reasons.Contains(UiStrings.GitBranchChanged) && mismatch.Git.Result == UiStrings.CurrentGitDiffers, "git branch mismatch was not reported");
+    var headMismatch = SnapshotPreviewBuilder.Build(snapshot, current with { Git = snapshot.Git with { HeadCommit = "def" } });
+    Assert(headMismatch.Git.Reasons.Contains(UiStrings.GitHeadChanged), "git HEAD mismatch was not reported");
+    var fingerprintMismatch = SnapshotPreviewBuilder.Build(snapshot, current with { Git = snapshot.Git with { StatusFingerprint = "changed" } });
+    Assert(fingerprintMismatch.Git.Reasons.Contains(UiStrings.GitWorkspaceStateChanged), "git fingerprint mismatch was not reported");
+    return Task.CompletedTask;
+}
+
+static Task SnapshotPreviewSelectionAsync()
+{
+    var snapshot = SampleSnapshot("preview-selection") with
+    {
+        Selection = [
+            new WorkspaceSnapshotSelection { Source = "Codex", SessionId = "thread-1", TurnId = "a", Role = "User" },
+            new WorkspaceSnapshotSelection { Source = "Codex", SessionId = "thread-1", TurnId = "b", Role = "User" },
+            new WorkspaceSnapshotSelection { Source = "Codex", SessionId = "thread-1", TurnId = "c", Role = "User" },
+        ],
+    };
+    var model = SnapshotPreviewBuilder.Build(snapshot, new SnapshotPreviewCurrentState { WorkspaceName = "fixture", WorkspacePath = "C:\\fixture", Source = "Codex", SessionId = "thread-1", VisibleTurnIds = new HashSet<string>(["a", "b"]), SelectedTurnCount = 2 });
+    Assert(model.Turns.Count(item => item.Status == UiStrings.Matchable) == 2 && model.Turns.Count(item => item.Status == UiStrings.NotCurrentlyMatchable) == 1, "selection match count was incorrect");
+    return Task.CompletedTask;
+}
+
+static Task SnapshotPreviewMetadataAsync()
+{
+    var snapshot = SampleSnapshot("preview-metadata") with
+    {
+        ContextItems = [
+            new WorkspaceSnapshotContextItem { Key = "second", Type = "Note", Title = "B", Content = "1234", Order = 2, ReferencePath = "b.md" },
+            new WorkspaceSnapshotContextItem { Key = "first", Type = "ProjectFile", Title = "A", Content = "12", Order = 1, ReferencePath = "a.md" },
+        ],
+        Handoff = new WorkspaceSnapshotHandoff { Target = "Codex", Template = "Continue Task", Title = "Preview title", Task = "task", IncludeContextPack = true, IncludeWorkspace = true, IncludeGitState = false, IncludeProjectFileSummary = true },
+    };
+    var model = SnapshotPreviewBuilder.Build(snapshot, new SnapshotPreviewCurrentState { WorkspaceName = "fixture", WorkspacePath = "C:\\fixture", Source = "ChatGPT", SessionId = "session-1" });
+    Assert(model.ContextItems.Select(item => item.Title).SequenceEqual(["A", "B"]), "context preview order changed");
+    Assert(model.ContextItems[0].CharacterCount == 2 && model.Handoff.Template == "继续任务" && model.Handoff.IncludeContextPack == UiStrings.Yes, "context or handoff metadata was incorrect");
+    return Task.CompletedTask;
+}
+
+static Task SnapshotPreviewIsReadOnlyAsync()
+{
+    var snapshot = SampleSnapshot("preview-read-only");
+    var rows = new[] { true, false };
+    var contextCount = snapshot.ContextItems.Count;
+    var model = SnapshotPreviewBuilder.Build(snapshot, new SnapshotPreviewCurrentState { WorkspaceName = "fixture", WorkspacePath = "C:\\fixture", Source = "ChatGPT", SessionId = "session-1", SelectedTurnCount = 1, ContextCount = contextCount });
+    Assert(rows.SequenceEqual([true, false]) && snapshot.ContextItems.Count == contextCount && model is not null, "preview changed source state");
+    return Task.CompletedTask;
+}
+
+static Task SnapshotPreviewUiIsLocalizedAsync()
+{
+    var root = FindRepositoryRoot();
+    var xaml = File.ReadAllText(Path.Combine(root, "apps", "windows", "CodexBridge.App", "SnapshotPreviewView.xaml"));
+    var code = File.ReadAllText(Path.Combine(root, "apps", "windows", "CodexBridge.App", "SnapshotView.xaml"));
+    Assert(xaml.Contains("UiSnapshotComparison", StringComparison.Ordinal) && xaml.Contains("UiWillNotModifyClipboard", StringComparison.Ordinal) && xaml.Contains("CanRestore", StringComparison.Ordinal), "preview UI bindings are incomplete");
+    Assert(code.Contains("UiSnapshotPreview", StringComparison.Ordinal) && code.Contains("PreviewClick", StringComparison.Ordinal), "snapshot preview entry point is missing");
+    return Task.CompletedTask;
+}
+
+static Task SnapshotPreviewShortDisplayAsync()
+{
+    var root = FindRepositoryRoot();
+    var xaml = File.ReadAllText(Path.Combine(root, "apps", "windows", "CodexBridge.App", "SnapshotPreviewView.xaml"));
+    var strings = File.ReadAllText(Path.Combine(root, "apps", "windows", "CodexBridge.App", "Themes", "Strings.xaml"));
+    Assert(strings.Contains("UiItem", StringComparison.Ordinal) && strings.Contains("UiSelectionSourceHeader", StringComparison.Ordinal) && strings.Contains("UiContextReferenceHeader", StringComparison.Ordinal), "preview header resources are missing");
+    Assert(xaml.Contains("UiSnapshotColumn", StringComparison.Ordinal) && xaml.Contains("UiCurrentColumn", StringComparison.Ordinal) && xaml.Contains("UiSelectionTurnIdHeader", StringComparison.Ordinal) && xaml.Contains("UiContextCharacterHeader", StringComparison.Ordinal), "preview headers are not bound");
+    Assert(SnapshotPreviewBuilder.ShortHash("d80401eabcdef", 8) == "d80401ea…", "HEAD short display is incorrect");
+    Assert(SnapshotPreviewBuilder.ShortHash("EB606B63abcdef", 12) == "EB606B63abcd…", "fingerprint short display is incorrect");
+    Assert(SnapshotPreviewBuilder.ShortHash(null, 8) == UiStrings.Unavailable && SnapshotPreviewBuilder.ShortHash(string.Empty, 8) == UiStrings.Unavailable, "empty hash did not display unavailable");
+    return Task.CompletedTask;
+}
+
+static Task SnapshotPreviewLocalizedDisplayAsync()
+{
+    var root = FindRepositoryRoot();
+    var xaml = File.ReadAllText(Path.Combine(root, "apps", "windows", "CodexBridge.App", "SnapshotPreviewView.xaml"));
+    var strings = File.ReadAllText(Path.Combine(root, "apps", "windows", "CodexBridge.App", "Themes", "Strings.xaml"));
+    Assert(UiStrings.DisplayRole("User") == "用户" && UiStrings.DisplayRole("Assistant") == "助手" && UiStrings.DisplayRole("System") == "系统", "role display mapping is incomplete");
+    Assert(UiStrings.DisplayContextType("ProjectFile") == "项目文件" && UiStrings.DisplayContextType("ConversationTurn") == "会话轮次" && UiStrings.DisplayContextType("GitDiff") == "Git 差异" && UiStrings.DisplayContextType("Note") == "笔记", "context type display mapping is incomplete");
+    Assert(UiStrings.DisplayContextTitle("File · AGENTS.md") == "文件 · AGENTS.md", "project file title display mapping is incorrect");
+    Assert(strings.Contains("UiGitItemHeader", StringComparison.Ordinal) && strings.Contains("UiGitSnapshotHeader", StringComparison.Ordinal) && strings.Contains("UiGitCurrentHeader", StringComparison.Ordinal), "Git preview header resources are missing");
+    foreach (var english in new[] { "Session / Thread", "Changed files", "fingerprint", "Workspace 文件", "Git working tree" }) Assert(!strings.Contains(english, StringComparison.Ordinal), $"English preview resource remained: {english}");
+    Assert(xaml.Contains("UiGitItemHeader", StringComparison.Ordinal) && xaml.Contains("UiGitCurrentHeader", StringComparison.Ordinal) && xaml.Contains("UiWillRestoreContext", StringComparison.Ordinal), "Git or restore-after headers are not bound");
+    return Task.CompletedTask;
+}
+
+static Task SnapshotPreviewUnavailableGitAsync()
+{
+    var root = FindRepositoryRoot();
+    var xaml = File.ReadAllText(Path.Combine(root, "apps", "windows", "CodexBridge.App", "SnapshotPreviewView.xaml"));
+    var snapshot = SampleSnapshot("preview-no-git") with
+    {
+        Workspace = new WorkspaceSnapshotWorkspace { Name = "fixture", Path = "C:\\fixture" },
+        Git = new WorkspaceSnapshotGit { Branch = "main", HeadCommit = "abc", StatusFingerprint = "saved" },
+    };
+    var model = SnapshotPreviewBuilder.Build(snapshot, new SnapshotPreviewCurrentState { WorkspaceName = "other", WorkspacePath = "C:\\other", Source = "Codex", Git = new WorkspaceSnapshotGit() });
+    Assert(!model.CanRestore && model.WorkspaceAffinityMessage == UiStrings.SnapshotWorkspaceMismatchRestoreBlocked, "workspace mismatch warning or restore guard missing");
+    Assert(model.Git.Result == UiStrings.Unavailable && model.Git.Reasons.SequenceEqual([UiStrings.GitUnavailableReason]), "unavailable Git was reported as changed");
+    Assert(model.Comparisons.Where(item => item.Label is UiStrings.GitBranchLabel or UiStrings.GitHeadLabel or UiStrings.GitWorkspaceStateLabel).All(item => item.Status == UiStrings.Unavailable), "top comparison did not use unavailable Git semantics");
+    Assert(xaml.Contains("WorkspaceAffinityMessage", StringComparison.Ordinal), "workspace mismatch warning is not visible in Preview");
+    var comparable = snapshot with { Workspace = new WorkspaceSnapshotWorkspace { Name = "fixture", Path = "C:\\fixture" } };
+    var currentGit = new WorkspaceSnapshotGit { Branch = "feature", HeadCommit = "def", StatusFingerprint = "current" };
+    var changed = SnapshotPreviewBuilder.Build(comparable, new SnapshotPreviewCurrentState { WorkspaceName = "fixture", WorkspacePath = "C:\\fixture", Source = "Codex", Git = currentGit });
+    Assert(changed.Git.Result == UiStrings.CurrentGitDiffers && changed.Git.Reasons.Contains(UiStrings.GitBranchChanged) && changed.Git.Reasons.Contains(UiStrings.GitHeadChanged) && changed.Git.Reasons.Contains(UiStrings.GitWorkspaceStateChanged), "comparable Git changes were not reported");
     return Task.CompletedTask;
 }
 

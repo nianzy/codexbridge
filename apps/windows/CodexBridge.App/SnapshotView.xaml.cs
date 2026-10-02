@@ -17,6 +17,31 @@ public partial class SnapshotView : System.Windows.Controls.UserControl
         if (DataContext is MainWindowViewModel vm) await vm.RestoreSelectedSnapshotAsync();
     }
 
+    private async void PreviewClick(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel vm) return;
+        var model = await vm.BuildSelectedSnapshotPreviewAsync();
+        if (model is null) return;
+        var view = new SnapshotPreviewView { DataContext = model };
+        var window = new Window
+        {
+            Title = (string)Application.Current.FindResource("UiSnapshotPreviewWindowTitle"),
+            Width = 940,
+            Height = 740,
+            MinWidth = 760,
+            MinHeight = 560,
+            Owner = Window.GetWindow(this),
+            Content = view,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+        };
+        view.CloseRequested += (_, _) => window.Close();
+        view.RestoreRequested += async (_, _) =>
+        {
+            if (await vm.RestoreSelectedSnapshotAsync()) window.Close();
+        };
+        window.ShowDialog();
+    }
+
     private void RenameClick(object sender, RoutedEventArgs e)
     {
         if (DataContext is not MainWindowViewModel vm || vm.SelectedSnapshot?.Snapshot is null) return;
