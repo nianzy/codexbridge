@@ -59,6 +59,37 @@ public sealed class WorkspaceSnapshotService
         return Save(workspacePath, snapshot);
     }
 
+    public WorkspaceSnapshot ImportValidatedSnapshot(string workspacePath, WorkspaceSnapshot snapshot)
+    {
+        Validate(snapshot);
+        if (!Path.IsPathFullyQualified(workspacePath)
+            || string.IsNullOrWhiteSpace(snapshot.SnapshotId)
+            || snapshot.SnapshotId is "." or ".."
+            || snapshot.SnapshotId.Length > 128
+            || snapshot.SnapshotId.Any(character => !(char.IsAsciiLetterOrDigit(character) || character is '-' or '_' or '.')))
+        {
+            throw new InvalidDataException(UiStrings.SnapshotPackageInvalid);
+        }
+
+        var root = GetRoot(workspacePath);
+        Directory.CreateDirectory(root);
+        var target = Path.Combine(root, snapshot.SnapshotId);
+        if (Directory.Exists(target) || File.Exists(target)) throw new InvalidDataException(UiStrings.SnapshotAlreadyExists);
+        var stagingRoot = Path.Combine(workspacePath, ".ai", $".snapshot-import-{Guid.NewGuid():N}.tmp");
+        try
+        {
+            Directory.CreateDirectory(stagingRoot);
+            WriteAtomic(Path.Combine(stagingRoot, "snapshot.json"), JsonSerializer.Serialize(snapshot, JsonOptions));
+            WriteAtomic(Path.Combine(stagingRoot, "summary.md"), RenderSummary(snapshot));
+            Directory.Move(stagingRoot, target);
+            return snapshot;
+        }
+        finally
+        {
+            if (Directory.Exists(stagingRoot)) Directory.Delete(stagingRoot, true);
+        }
+    }
+
     public void Delete(string workspacePath, string snapshotId)
     {
         DeleteDirectory(workspacePath, Path.Combine(GetRoot(workspacePath), snapshotId));
@@ -79,8 +110,8 @@ public sealed class WorkspaceSnapshotService
 
     public static void Validate(WorkspaceSnapshot snapshot)
     {
-        if (snapshot.SchemaVersion != CurrentSchemaVersion)
-            throw new InvalidDataException(snapshot.SchemaVersion > CurrentSchemaVersion ? "此工作现场来自更新版本的 Codex Bridge。" : "不支持此工作现场版本。");
+        if (snapshot is null || snapshot.Workspace is null || snapshot.SchemaVersion != CurrentSchemaVersion)
+            throw new InvalidDataException(snapshot is not null && snapshot.SchemaVersion > CurrentSchemaVersion ? "此工作现场来自更新版本的 Codex Bridge。" : "不支持此工作现场版本。");
         if (string.IsNullOrWhiteSpace(snapshot.SnapshotId) || string.IsNullOrWhiteSpace(snapshot.Workspace.Path)) throw new InvalidDataException("工作现场数据不完整。");
     }
 

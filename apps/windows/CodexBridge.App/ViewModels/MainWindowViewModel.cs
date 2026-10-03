@@ -75,8 +75,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     private bool includeHandoffGit = true;
     private bool includeHandoffProjectFiles;
     private readonly WorkspaceSnapshotService snapshotService = new();
+    private readonly SnapshotPackageService snapshotPackageService;
     private WorkspaceSnapshotEntry? selectedSnapshot;
     private string snapshotName = string.Empty;
+    private string snapshotImportErrorMessage = string.Empty;
 
     public MainWindowViewModel(
         IConversationRepository repository,
@@ -94,6 +96,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         this.codexLog = codexLog ?? NullCodexAppLog.Instance;
         this.uiLog = uiLog ?? NullCodexAppLog.Instance;
         this.clipboardService = clipboardService ?? ClipboardService.Shared;
+        snapshotPackageService = new SnapshotPackageService(snapshotService);
         this.confirmWorkspaceSwitch = confirmWorkspaceSwitch ?? (() => MessageBox.Show(
             "Current context or handoff contains unsaved content.\n\nClear and switch workspace?",
             "Workspace",
@@ -374,15 +377,18 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             if (!SetProperty(ref selectedSnapshot, value)) return;
             OnPropertyChanged(nameof(CanRestoreSnapshot));
             OnPropertyChanged(nameof(CanPreviewSnapshot));
+            OnPropertyChanged(nameof(CanExportSnapshot));
             OnPropertyChanged(nameof(CanRenameSnapshot));
             OnPropertyChanged(nameof(CanDeleteSnapshot));
         }
     }
     public bool CanRestoreSnapshot => SelectedSnapshot?.Snapshot is not null;
     public bool CanPreviewSnapshot => SelectedSnapshot?.Snapshot is not null;
+    public bool CanExportSnapshot => SelectedSnapshot?.Snapshot is not null;
     public bool CanRenameSnapshot => SelectedSnapshot?.Snapshot is not null;
     public bool CanDeleteSnapshot => SelectedSnapshot is not null;
     public string SnapshotName { get => snapshotName; set => SetProperty(ref snapshotName, value); }
+    public string SnapshotImportErrorMessage { get => snapshotImportErrorMessage; private set => SetProperty(ref snapshotImportErrorMessage, value); }
     public NoteItem? SelectedNote { get; set; }
     public string GitBranch
     {
@@ -1084,6 +1090,65 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         SnapshotEntries.Clear();
         if (SelectedWorkspace is null) return;
         foreach (var entry in snapshotService.List(SelectedWorkspace.Path)) SnapshotEntries.Add(entry);
+    }
+
+    public string GetSelectedSnapshotExportFileName() =>
+        SelectedSnapshot?.Snapshot is { } snapshot
+            ? snapshotPackageService.BuildDefaultFileName(snapshot)
+            : "CodexBridge-Snapshot.zip";
+
+    public bool ExportSelectedSnapshot(string packagePath)
+    {
+        if (SelectedSnapshot?.Snapshot is null || string.IsNullOrWhiteSpace(packagePath)) return false;
+        try
+        {
+            snapshotPackageService.Export(packagePath, SelectedSnapshot.Snapshot);
+            StatusText = UiStrings.SnapshotExported;
+            return true;
+        }
+        catch (Exception exception)
+        {
+            StatusText = UiStrings.SnapshotExportFailed(exception.Message);
+            return false;
+        }
+    }
+
+    public SnapshotPackageInspection? InspectSnapshotImport(string packagePath)
+    {
+        SnapshotImportErrorMessage = string.Empty;
+        if (SelectedWorkspace is null || string.IsNullOrWhiteSpace(packagePath)) return null;
+        try
+        {
+            return snapshotPackageService.InspectImport(packagePath, SelectedWorkspace.Name, SelectedWorkspace.Path);
+        }
+        catch (Exception exception)
+        {
+            SnapshotImportErrorMessage = exception.Message;
+            StatusText = UiStrings.SnapshotImportFailed(exception.Message);
+            return null;
+        }
+    }
+
+    public void BeginSnapshotImport() => SnapshotImportErrorMessage = string.Empty;
+
+    public bool ImportSnapshotPackage(SnapshotPackageInspection inspection)
+    {
+        SnapshotImportErrorMessage = string.Empty;
+        if (inspection is null || SelectedWorkspace is null) return false;
+        try
+        {
+            var imported = snapshotPackageService.ImportValidated(inspection);
+            RefreshSnapshots();
+            SelectedSnapshot = SnapshotEntries.FirstOrDefault(entry => entry.Snapshot?.SnapshotId == imported.SnapshotId);
+            StatusText = UiStrings.SnapshotImported;
+            return true;
+        }
+        catch (Exception exception)
+        {
+            SnapshotImportErrorMessage = exception.Message;
+            StatusText = UiStrings.SnapshotImportFailed(exception.Message);
+            return false;
+        }
     }
 
     public async Task<bool> SaveCurrentSnapshotAsync(string requestedName)

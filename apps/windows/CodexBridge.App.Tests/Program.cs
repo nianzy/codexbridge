@@ -1,6 +1,9 @@
 using System.IO;
+using System.IO.Compression;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using System.Xml.Linq;
 using System.Windows;
 using CodexBridge.App.Infrastructure;
@@ -71,6 +74,14 @@ var tests = new (string Name, Func<Task> Test)[]
     ("project file context adds selected file", ProjectFileContextAddsSelectedFileAsync),
     ("project file context rejects directory and read failure", ProjectFileContextRejectsInvalidSelectionAsync),
     ("snapshot captures only selected visible turns", SnapshotCapturesOnlySelectedTurnsAsync),
+    ("snapshot package exports exact backup entries", SnapshotPackageExportsExactEntriesAsync),
+    ("snapshot package imports and rebuilds summary", SnapshotPackageImportsAndRebuildsSummaryAsync),
+    ("snapshot package rejects duplicate and invalid packages", SnapshotPackageRejectsDuplicateAndInvalidAsync),
+    ("snapshot package rejects missing and unsupported metadata", SnapshotPackageRejectsMissingAndUnsupportedMetadataAsync),
+    ("snapshot package rejects identity and traversal tampering", SnapshotPackageRejectsIdentityAndTraversalAsync),
+    ("snapshot package allows workspace mismatch without rewriting origin", SnapshotPackageAllowsWorkspaceMismatchAsync),
+    ("snapshot import failure feedback is localized and non-mutating", SnapshotImportFailureFeedbackAsync),
+    ("snapshot import error dialog resources are themed", SnapshotImportErrorDialogResourcesAsync),
     ("handoff embeds context and git state", HandoffContextAndGitRenderAsync),
     ("handoff keeps normal user task", HandoffNormalTaskAsync),
     ("handoff removes attachment wrapper and path", HandoffAttachmentWrapperAsync),
@@ -1103,6 +1114,264 @@ static Task SnapshotCapturesOnlySelectedTurnsAsync()
     rows.ForEach(row => row.IsSelected = false);
     Assert(MainWindowViewModel.CaptureSelectedTurnRefs("ChatGPT", "session-1", rows).Count == 0, "empty selection was not captured as empty");
     return Task.CompletedTask;
+}
+
+static Task SnapshotPackageExportsExactEntriesAsync()
+{
+    var root = Path.Combine(Path.GetTempPath(), $"codexbridge-package-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(root);
+    try
+    {
+        var packagePath = Path.Combine(root, "backup.zip");
+        var snapshot = SampleSnapshot("package-export");
+        new SnapshotPackageService().Export(packagePath, snapshot, DateTimeOffset.UtcNow);
+        using var archive = ZipFile.OpenRead(packagePath);
+        var names = archive.Entries.Select(entry => entry.FullName).ToHashSet(StringComparer.Ordinal);
+        Assert(names.SetEquals(["manifest.json", "snapshot.json", "summary.md"]), "export package entries were not exact");
+        var snapshotBytes = ReadZipEntry(archive, "snapshot.json");
+        var manifest = JsonSerializer.Deserialize<SnapshotPackageManifest>(ReadZipEntry(archive, "manifest.json"), new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert(manifest is not null && manifest.PackageVersion == 1 && manifest.SnapshotId == snapshot.SnapshotId && manifest.SnapshotSchemaVersion == snapshot.SchemaVersion, "manifest identity fields were incorrect");
+        Assert(string.Equals(manifest!.SnapshotSha256, Convert.ToHexString(SHA256.HashData(snapshotBytes)), StringComparison.OrdinalIgnoreCase), "manifest hash did not match snapshot bytes");
+        var manifestText = Encoding.UTF8.GetString(ReadZipEntry(archive, "manifest.json"));
+        foreach (var sensitive in new[] { "token", "cookie", "password", "credential", "apiKey", "clipboard", "reasoning", "environmentVariables" })
+            Assert(!manifestText.Contains(sensitive, StringComparison.OrdinalIgnoreCase), $"manifest contained sensitive field: {sensitive}");
+    }
+    finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    return Task.CompletedTask;
+}
+
+static Task SnapshotPackageImportsAndRebuildsSummaryAsync()
+{
+    var root = Path.Combine(Path.GetTempPath(), $"codexbridge-package-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(root);
+    try
+    {
+        var source = Path.Combine(root, "source");
+        var target = Path.Combine(root, "target");
+        var packagePath = Path.Combine(root, "backup.zip");
+        var snapshot = SampleSnapshot("package-import");
+        var service = new SnapshotPackageService();
+        service.Export(packagePath, snapshot);
+        RewritePackage(packagePath, entries => entries["summary.md"] = Encoding.UTF8.GetBytes("tampered summary"));
+        var inspection = service.InspectImport(packagePath, "target", target);
+        var imported = service.ImportValidated(inspection);
+        var directory = Path.Combine(WorkspaceSnapshotService.GetRoot(target), imported.SnapshotId);
+        Assert(File.Exists(Path.Combine(directory, "snapshot.json")) && File.ReadAllText(Path.Combine(directory, "summary.md")).Contains("模板：调试问题", StringComparison.Ordinal), "import did not write validated snapshot and regenerated summary");
+        Assert(!File.ReadAllText(Path.Combine(directory, "summary.md")).Contains("tampered", StringComparison.Ordinal), "import trusted package summary");
+        Assert(!Directory.Exists(Path.Combine(source, ".ai")), "import unexpectedly changed another workspace");
+    }
+    finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    return Task.CompletedTask;
+}
+
+static Task SnapshotPackageRejectsDuplicateAndInvalidAsync()
+{
+    var root = Path.Combine(Path.GetTempPath(), $"codexbridge-package-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(root);
+    try
+    {
+        var workspace = Path.Combine(root, "workspace");
+        var packagePath = Path.Combine(root, "backup.zip");
+        var snapshot = SampleSnapshot("package-duplicate");
+        var service = new SnapshotPackageService();
+        service.Export(packagePath, snapshot);
+        new WorkspaceSnapshotService().Save(workspace, snapshot);
+        AssertThrows<InvalidDataException>(() => service.InspectImport(packagePath, "workspace", workspace), "duplicate snapshot id was accepted");
+
+        var extraPath = Path.Combine(root, "extra.zip");
+        File.Copy(packagePath, extraPath);
+        RewritePackage(extraPath, entries => entries["extra.txt"] = Encoding.UTF8.GetBytes("unsupported"));
+        AssertThrows<InvalidDataException>(() => service.InspectImport(extraPath, "other", Path.Combine(root, "other")), "extra package entry was accepted");
+
+        var hashPath = Path.Combine(root, "hash.zip");
+        File.Copy(packagePath, hashPath);
+        RewritePackage(hashPath, entries => entries["snapshot.json"][0] ^= 1);
+        AssertThrows<InvalidDataException>(() => service.InspectImport(hashPath, "other", Path.Combine(root, "other")), "snapshot hash mismatch was accepted");
+    }
+    finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    return Task.CompletedTask;
+}
+
+static Task SnapshotPackageRejectsMissingAndUnsupportedMetadataAsync()
+{
+    var root = Path.Combine(Path.GetTempPath(), $"codexbridge-package-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(root);
+    try
+    {
+        var service = new SnapshotPackageService();
+        var snapshot = SampleSnapshot("package-malformed");
+        var source = Path.Combine(root, "source.zip");
+        service.Export(source, snapshot);
+        foreach (var (name, mutate) in new (string Name, Action<Dictionary<string, byte[]>> Mutate)[]
+        {
+            ("missing-manifest.zip", entries => entries.Remove("manifest.json")),
+            ("missing-snapshot.zip", entries => entries.Remove("snapshot.json")),
+            ("corrupt-manifest.zip", entries => entries["manifest.json"] = Encoding.UTF8.GetBytes("{")),
+            ("corrupt-snapshot.zip", entries => entries["snapshot.json"] = Encoding.UTF8.GetBytes("{")),
+            ("newer-version.zip", entries => entries["manifest.json"] = ManifestBytes(snapshot, packageVersion: 2)),
+            ("unsupported-version.zip", entries => entries["manifest.json"] = ManifestBytes(snapshot, packageVersion: 0)),
+        })
+        {
+            var package = Path.Combine(root, name);
+            File.Copy(source, package);
+            RewritePackage(package, mutate);
+            AssertThrows<InvalidDataException>(() => service.InspectImport(package, "workspace", Path.Combine(root, name + "-workspace")), $"malformed package was accepted: {name}");
+        }
+    }
+    finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    return Task.CompletedTask;
+}
+
+static Task SnapshotPackageRejectsIdentityAndTraversalAsync()
+{
+    var root = Path.Combine(Path.GetTempPath(), $"codexbridge-package-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(root);
+    try
+    {
+        var service = new SnapshotPackageService();
+        var snapshot = SampleSnapshot("package-identity");
+        var source = Path.Combine(root, "source.zip");
+        service.Export(source, snapshot);
+        foreach (var (name, mutate) in new (string Name, Action<Dictionary<string, byte[]>> Mutate)[]
+        {
+            ("id-mismatch.zip", entries => entries["manifest.json"] = ManifestBytes(snapshot, snapshotId: "other")),
+            ("schema-mismatch.zip", entries => entries["manifest.json"] = ManifestBytes(snapshot, schemaVersion: 99)),
+            ("nested-entry.zip", entries => entries["nested/evil.txt"] = Encoding.UTF8.GetBytes("evil")),
+            ("traversal-entry.zip", entries => entries["../evil.txt"] = Encoding.UTF8.GetBytes("evil")),
+        })
+        {
+            var package = Path.Combine(root, name);
+            File.Copy(source, package);
+            RewritePackage(package, mutate);
+            AssertThrows<InvalidDataException>(() => service.InspectImport(package, "workspace", Path.Combine(root, name + "-workspace")), $"tampered package was accepted: {name}");
+        }
+    }
+    finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    return Task.CompletedTask;
+}
+
+static byte[] ManifestBytes(WorkspaceSnapshot snapshot, int? packageVersion = null, string? snapshotId = null, int? schemaVersion = null, string? snapshotSha256 = null)
+{
+    var manifest = new SnapshotPackageManifest
+    {
+        PackageVersion = packageVersion ?? SnapshotPackageService.CurrentPackageVersion,
+        Product = "Codex Bridge",
+        SnapshotId = snapshotId ?? snapshot.SnapshotId,
+        SnapshotSchemaVersion = schemaVersion ?? snapshot.SchemaVersion,
+        SnapshotSha256 = snapshotSha256 ?? Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(snapshot, new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true }))),
+        ExportedAt = DateTimeOffset.UtcNow,
+        AppVersion = snapshot.AppVersion,
+    };
+    return JsonSerializer.SerializeToUtf8Bytes(manifest, new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
+}
+
+static async Task SnapshotImportFailureFeedbackAsync()
+{
+    var previousOverride = Environment.GetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH");
+    await using var scope = await TestScope.CreateAsync();
+    try
+    {
+        Environment.SetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH", Path.Combine(scope.Root, "workspaces.json"));
+        await using var importer = new CaptureInboxImporter(scope.Repository, inboxDirectory: scope.Inbox);
+        await using var viewModel = new MainWindowViewModel(scope.Repository, importer, FakeCodexClient.Success());
+        var workspace = new WorkspaceItem("fixture", scope.Root, DateTimeOffset.UtcNow);
+        viewModel.Workspaces.Add(workspace);
+        Assert(viewModel.TrySwitchWorkspace(workspace, requireConfirmation: false), "workspace setup failed");
+
+        var snapshot = SampleSnapshot("bad-sha") with
+        {
+            Workspace = new WorkspaceSnapshotWorkspace { Name = workspace.Name, Path = workspace.Path },
+        };
+        var service = new SnapshotPackageService();
+        var badPackage = Path.Combine(scope.Root, "bad-sha.zip");
+        service.Export(badPackage, snapshot);
+        RewritePackage(badPackage, entries => entries["manifest.json"] = ManifestBytes(snapshot, snapshotSha256: new string('0', 64)));
+
+        var failed = viewModel.InspectSnapshotImport(badPackage);
+        Assert(failed is null, "bad SHA unexpectedly entered import confirmation");
+        Assert(viewModel.SnapshotImportErrorMessage == UiStrings.SnapshotIntegrityFailed, "bad SHA error message was not exposed for display");
+        Assert(viewModel.StatusText == UiStrings.SnapshotImportFailed(UiStrings.SnapshotIntegrityFailed), "bad SHA status did not retain the concrete reason");
+        Assert(!Directory.Exists(Path.Combine(WorkspaceSnapshotService.GetRoot(scope.Root), snapshot.SnapshotId)), "bad SHA created a Snapshot directory");
+
+        viewModel.BeginSnapshotImport();
+        Assert(string.IsNullOrEmpty(viewModel.SnapshotImportErrorMessage), "cancel path retained an import error");
+
+        var validSnapshot = snapshot with { SnapshotId = "valid-package" };
+        var validPackage = Path.Combine(scope.Root, "valid.zip");
+        service.Export(validPackage, validSnapshot);
+        var inspection = viewModel.InspectSnapshotImport(validPackage);
+        Assert(inspection is not null && string.IsNullOrEmpty(viewModel.SnapshotImportErrorMessage), "valid package did not reach import confirmation");
+        Assert(!Directory.Exists(Path.Combine(WorkspaceSnapshotService.GetRoot(scope.Root), validSnapshot.SnapshotId)), "inspection wrote a Snapshot before confirmation");
+    }
+    finally
+    {
+        Environment.SetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH", previousOverride);
+    }
+}
+
+static Task SnapshotImportErrorDialogResourcesAsync()
+{
+    var strings = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "apps", "windows", "CodexBridge.App", "Themes", "Strings.xaml"));
+    var view = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "apps", "windows", "CodexBridge.App", "SnapshotImportErrorView.xaml"));
+    Assert(strings.Contains("UiSnapshotImportWindowTitle", StringComparison.Ordinal) && strings.Contains("UiConfirm", StringComparison.Ordinal), "import error dialog resources are missing");
+    Assert(view.Contains("SnapshotImportErrorView", StringComparison.Ordinal) && view.Contains("PrimaryButtonStyle", StringComparison.Ordinal), "import error dialog is not themed");
+    return Task.CompletedTask;
+}
+
+static Task SnapshotPackageAllowsWorkspaceMismatchAsync()
+{
+    var root = Path.Combine(Path.GetTempPath(), $"codexbridge-package-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(root);
+    try
+    {
+        var current = Path.Combine(root, "current");
+        var packagePath = Path.Combine(root, "backup.zip");
+        var snapshot = SampleSnapshot("package-mismatch");
+        var service = new SnapshotPackageService();
+        service.Export(packagePath, snapshot);
+        var inspection = service.InspectImport(packagePath, "current", current);
+        Assert(!inspection.WorkspaceMatches && inspection.WorkspaceMismatchWarning.Length > 0, "workspace mismatch was not surfaced during import inspection");
+        service.ImportValidated(inspection);
+        var loaded = new WorkspaceSnapshotService().Load(Path.Combine(WorkspaceSnapshotService.GetRoot(current), snapshot.SnapshotId));
+        Assert(loaded.Workspace.Path == snapshot.Workspace.Path && loaded.Workspace.Name == snapshot.Workspace.Name, "workspace mismatch import rewrote original workspace");
+    }
+    finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    return Task.CompletedTask;
+}
+
+static byte[] ReadZipEntry(ZipArchive archive, string name)
+{
+    using var stream = archive.GetEntry(name)!.Open();
+    using var output = new MemoryStream();
+    stream.CopyTo(output);
+    return output.ToArray();
+}
+
+static void RewritePackage(string packagePath, Action<Dictionary<string, byte[]>> mutate)
+{
+    var entries = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+    using (var archive = ZipFile.OpenRead(packagePath))
+    {
+        foreach (var entry in archive.Entries) entries[entry.FullName] = ReadZipEntry(archive, entry.FullName);
+    }
+    mutate(entries);
+    var temp = packagePath + ".rewrite.tmp";
+    using (var archive = ZipFile.Open(temp, ZipArchiveMode.Create))
+    {
+        foreach (var entry in entries)
+        {
+            using var stream = archive.CreateEntry(entry.Key).Open();
+            stream.Write(entry.Value);
+        }
+    }
+    File.Move(temp, packagePath, true);
+}
+
+static void AssertThrows<TException>(Action action, string message) where TException : Exception
+{
+    try { action(); }
+    catch (TException) { return; }
+    throw new InvalidOperationException(message);
 }
 
 static WorkspaceSnapshot SampleSnapshot(string id) => new()

@@ -1,4 +1,5 @@
 using System.Windows;
+using Microsoft.Win32;
 using CodexBridge.App.ViewModels;
 
 namespace CodexBridge.App;
@@ -15,6 +16,76 @@ public partial class SnapshotView : System.Windows.Controls.UserControl
     private async void RestoreClick(object sender, RoutedEventArgs e)
     {
         if (DataContext is MainWindowViewModel vm) await vm.RestoreSelectedSnapshotAsync();
+    }
+
+    private void ExportClick(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel vm || !vm.CanExportSnapshot) return;
+        var dialog = new SaveFileDialog
+        {
+            Filter = (string)Application.Current.FindResource("UiSnapshotPackageFilter"),
+            DefaultExt = ".zip",
+            AddExtension = true,
+            FileName = vm.GetSelectedSnapshotExportFileName(),
+            OverwritePrompt = true,
+        };
+        if (dialog.ShowDialog(Window.GetWindow(this)) == true)
+        {
+            vm.ExportSelectedSnapshot(dialog.FileName);
+        }
+    }
+
+    private void ImportClick(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel vm) return;
+        vm.BeginSnapshotImport();
+        var dialog = new OpenFileDialog
+        {
+            Filter = (string)Application.Current.FindResource("UiSnapshotPackageFilter"),
+            DefaultExt = ".zip",
+            CheckFileExists = true,
+            Multiselect = false,
+        };
+        if (dialog.ShowDialog(Window.GetWindow(this)) != true) return;
+        var inspection = vm.InspectSnapshotImport(dialog.FileName);
+        if (inspection is null)
+        {
+            ShowImportError(vm.SnapshotImportErrorMessage);
+            return;
+        }
+
+        var view = new SnapshotImportView { DataContext = inspection };
+        var window = new Window
+        {
+            Title = (string)Application.Current.FindResource("UiSnapshotImportWindowTitle"),
+            Width = 560,
+            Height = 520,
+            Owner = Window.GetWindow(this),
+            Content = view,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            ResizeMode = ResizeMode.CanResize,
+        };
+        if (window.ShowDialog() == true)
+        {
+            if (!vm.ImportSnapshotPackage(inspection)) ShowImportError(vm.SnapshotImportErrorMessage);
+        }
+    }
+
+    private void ShowImportError(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message)) return;
+        var view = new SnapshotImportErrorView { DataContext = message };
+        var window = new Window
+        {
+            Title = (string)Application.Current.FindResource("UiSnapshotImportWindowTitle"),
+            Width = 460,
+            Height = 210,
+            Owner = Window.GetWindow(this),
+            Content = view,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            ResizeMode = ResizeMode.NoResize,
+        };
+        window.ShowDialog();
     }
 
     private async void PreviewClick(object sender, RoutedEventArgs e)

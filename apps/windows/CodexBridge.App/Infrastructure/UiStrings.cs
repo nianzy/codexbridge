@@ -44,6 +44,21 @@ public static class UiStrings
     public const string GitItemHeader = "项目";
     public const string GitSnapshotHeader = "工作现场";
     public const string GitCurrentHeader = "当前状态";
+    public const string SnapshotPackageInvalid = "工作现场备份无效。";
+    public const string SnapshotPackageMissingManifest = "工作现场备份缺少 manifest.json。";
+    public const string SnapshotPackageMissingSnapshot = "工作现场备份缺少 snapshot.json。";
+    public const string SnapshotPackageUnsupportedFiles = "工作现场备份包含不支持的文件。";
+    public const string SnapshotPackageNewerVersion = "此备份来自更新版本的 Codex Bridge，当前版本无法导入。";
+    public const string SnapshotPackageUnsupported = "不支持的工作现场备份格式。";
+    public const string SnapshotPackageIdentityMismatch = "工作现场备份身份不一致。";
+    public const string SnapshotPackageSchemaMismatch = "工作现场备份 Schema 不一致。";
+    public const string SnapshotIntegrityFailed = "工作现场备份完整性校验失败。";
+    public const string SnapshotAlreadyExists = "此工作现场已存在，不能重复导入。";
+    public const string SnapshotImportMismatchWarning = "此工作现场导入后不能在当前工作区恢复，但仍可以导入并查看预览。";
+    public const string SnapshotExported = "工作现场已导出。";
+    public const string SnapshotImported = "工作现场已导入。";
+    public static string SnapshotExportFailed(string reason) => $"工作现场导出失败：{reason}";
+    public static string SnapshotImportFailed(string reason) => $"工作现场导入失败：{reason}";
 
     public static string DisplayRole(string? value) => value switch
     {

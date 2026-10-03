@@ -1,0 +1,22 @@
+<UserControl x:Class="CodexBridge.App.SnapshotImportErrorView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <TextBlock Text="{Binding}"
+                   Foreground="{DynamicResource TextPrimary}"
+                   TextWrapping="Wrap"
+                   VerticalAlignment="Center"/>
+        <Button Grid.Row="1"
+                Content="{DynamicResource UiConfirm}"
+                Click="ConfirmClick"
+                Style="{StaticResource PrimaryButtonStyle}"
+                HorizontalAlignment="Right"
+                MinWidth="76"
+                Margin="0,16,0,0"
+                Padding="12,5"/>
+    </Grid>
+</UserControl>
