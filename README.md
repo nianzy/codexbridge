@@ -7,11 +7,80 @@
 ![Swift 6](https://img.shields.io/badge/Swift-6-f05138)
 [![Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-2f855a)](LICENSE)
 
-[下载最新 Beta](https://github.com/lijingpeng/codexbridge/releases) · [更新记录](CHANGELOG.md) · [报告问题](https://github.com/lijingpeng/codexbridge/issues)
+[发布下载（Windows / macOS）](https://github.com/lijingpeng/codexbridge/releases) · [更新记录](CHANGELOG.md) · [报告问题](https://github.com/lijingpeng/codexbridge/issues)
 
 ![Codex Bridge 主界面](assets/readme/01-codex-bridge-main.png)
 
-Codex Bridge 是一款原生 macOS App，用来查看和整理 ChatGPT、Codex 对话，并把选中的完整对话轮次填入新的 Codex 任务或 ChatGPT 会话。内容始终先进入草稿，由你检查后发送。
+Codex Bridge 是 ChatGPT ↔ Codex 的本地上下文桥接工具，提供 Windows 和 macOS 实现，两者功能边界不同。以下先介绍 Windows v1.0.0；后面的 macOS 部分保留原有 Beta 使用说明，上图为 macOS 界面。
+
+## Windows v1.0.0
+
+Windows 版是 ChatGPT ↔ Codex 的本地上下文桥接工具：ChatGPT 负责提供捕获的上下文，Codex 集成只做发现和读取，Context / Draft / Handoff 由用户确认后再使用。Windows 版不会自动发送或执行 Codex 内容。
+
+### Windows Requirements
+
+- Windows 10 或 Windows 11，x64。
+- 可用的 Codex executable（Codex Desktop 附带或 Codex CLI，需支持 app-server；用于只读会话发现和读取）。
+- 可选 Git executable（用于只读 Git 状态和差异）。
+- ChatGPT Web、Google Chrome 或 Microsoft Edge。
+- Chrome / Edge 扩展的“加载已解压的扩展程序”权限。
+- 官方 Windows x64 发布包为 self-contained，不要求另外安装 .NET Desktop Runtime。
+
+### Windows Quick Start
+
+1. 解压 `CodexBridge-win-x64-v1.0.0.zip`。
+2. 在解压目录打开 PowerShell，注册 Native Messaging Host：
+
+   ```powershell
+   .\scripts\install-native-host-windows.ps1 `
+     -NativeHostPath .\NativeHost\CodexBridge.NativeHost.exe `
+     -ManifestTemplatePath .\NativeHost\app.codexbridge.nativehost.json
+   ```
+
+3. 在 Chrome 或 Edge 的扩展管理页开启开发者模式，加载 `Extension` 文件夹。
+4. 启动 `App\CodexBridge.App.exe`，选择或添加工作区。
+5. 如果 Codex executable 未自动发现，可在启动前设置通用路径覆盖：
+
+   ```powershell
+   $env:CODEX_BRIDGE_CODEX_PATH="C:\Path\To\codex.exe"
+   ```
+
+6. 在 ChatGPT Web 中通过扩展捕获对话，回到 Codex Bridge 选择会话轮次。
+7. 构建 Context / Draft，检查预览，并由你确认后继续使用。
+
+注册仅写当前用户的 Chrome / Edge Native Messaging 注册及生成的 manifest；NativeHost 不会被复制到其它目录，请保留解压目录。扩展版本仍为独立的 `1.1.1`，固定 ID 为 `pnpgopcjhgfmnkefmdnoebmcbnnhnhee`。可在注册命令后加 `-WhatIf` 只检查路径、不写入；不要为测试覆盖已有正式注册。Windows ZIP 未代码签名，遇到组织安全策略限制时请联系管理员，不要绕过安全限制。
+
+### Windows 工作现场
+
+工作现场支持手动保存、Quick Save、工作区切换前可选自动保存、自动去重、自动保留数量、Restore Preview、Restore、ZIP Export / Import 和 Exit Protection。
+
+Quick Save 和退出前确认保存属于手动现场，不受自动现场 retention 清理影响；自动现场重命名后也转为手动现场。没有定时后台保存。ZIP 导入允许保留其它工作区的现场，但不改写其归属，也不会自动 Restore。
+
+Restore 只恢复当前会话中可匹配的选中轮次、Context 和 Handoff；不会修改工作区项目文件、Git branch、Git HEAD、Git working tree、ChatGPT / Codex 会话正文或 Clipboard。工作区归属不匹配时，Restore 会被阻止并要求用户回到对应工作区。
+
+Windows 发布包的 SHA256 校验文件与 ZIP 放在同一目录，可用以下命令校验：
+
+```powershell
+Get-FileHash .\CodexBridge-win-x64-v1.0.0.zip -Algorithm SHA256
+Get-Content .\CodexBridge-win-x64-v1.0.0.zip.sha256
+```
+
+### Windows 从源码构建与打包
+
+需要 .NET 8 SDK。首次构建先运行 `dotnet restore apps/windows/CodexBridge.Windows.sln`，然后：
+
+```powershell
+dotnet build apps/windows/CodexBridge.Windows.sln -c Release --no-restore
+dotnet run --project apps/windows/CodexBridge.Core.Tests -c Release --no-build
+dotnet run --project apps/windows/CodexBridge.App.Tests -c Release --no-build
+.\scripts\windows\publish-release.ps1
+```
+
+版本统一来自 `Directory.Build.props`。脚本仅 publish App 与 NativeHost 为 self-contained `win-x64`，首次需要可用 NuGet 源下载 runtime packs。ZIP 与 `.sha256` 输出到忽略的 `artifacts/release/`；已存在的包不会覆盖，可使用 `-OutputRoot artifacts/release/rebuild` 输出新一份。
+
+## macOS Beta 使用说明
+
+以下主要功能、安装、权限、自动更新和填入草稿说明针对 macOS，不代表 Windows 版具有自动创建任务或 App 内更新能力。
 
 ## 主要功能
 

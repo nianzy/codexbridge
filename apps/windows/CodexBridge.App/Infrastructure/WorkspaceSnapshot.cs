@@ -9,7 +9,7 @@ public sealed record WorkspaceSnapshot
     public required string Name { get; init; }
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset UpdatedAt { get; init; }
-    public string AppVersion { get; init; } = "1.0";
+    public string AppVersion { get; init; } = ProductInfo.Version;
     public required WorkspaceSnapshotWorkspace Workspace { get; init; }
     public List<WorkspaceSnapshotSelection> Selection { get; init; } = [];
     public List<WorkspaceSnapshotContextItem> ContextItems { get; init; } = [];

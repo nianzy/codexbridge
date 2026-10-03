@@ -12,7 +12,9 @@ $registryPaths = @(
     "HKCU:\Software\Google\Chrome\NativeMessagingHosts\$hostName",
     "HKCU:\Software\Microsoft\Edge\NativeMessagingHosts\$hostName"
 )
-$defaultTemplatePath = Join-Path $PSScriptRoot '..\apps\windows\native-host\app.codexbridge.nativehost.json'
+$sourceTemplatePath = Join-Path $PSScriptRoot '..\apps\windows\native-host\app.codexbridge.nativehost.json'
+$packageTemplatePath = Join-Path $PSScriptRoot '..\NativeHost\app.codexbridge.nativehost.json'
+$defaultTemplatePath = if (Test-Path -LiteralPath $sourceTemplatePath) { $sourceTemplatePath } else { $packageTemplatePath }
 $defaultInstalledManifestPath = Join-Path $env:LOCALAPPDATA 'Codex Bridge\NativeMessagingHosts\app.codexbridge.nativehost.json'
 
 if ($Uninstall) {

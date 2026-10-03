@@ -39,4 +39,5 @@ xcuserdata/
 # Temporary agent/tool output
 .tmp/
 tmp/
+artifacts/
 *.log

@@ -2,6 +2,52 @@
 
 本文件记录 Codex Bridge 面向用户的主要变化。
 
+## 1.0.0 - 2026-10-03
+
+本节为 Windows x64 发布；后续 1.1.x Beta 条目为已有 macOS 发布历史。
+
+### ChatGPT ↔ Codex Bridge
+
+- ChatGPT Web Capture 与 Native Messaging。
+- Codex 只读 app-server 集成、会话浏览和轮次选择。
+- Context / Draft / Handoff 始终由用户检查和确认。
+
+### Workspace
+
+- 多工作区、Project Explorer、文件预览和笔记。
+- Git 状态只读感知。
+
+### Context Pack
+
+- 支持会话轮次、项目文件、Git 差异和笔记。
+- 支持预览、复制和导出。
+
+### Workspace Snapshots
+
+- 手动保存、Quick Save、工作区切换前自动保存和退出保护。
+- 自动去重、自动保留数量、Rename、Preview、Workspace affinity 和 Restore；自动现场重命名后转为手动现场，手动/Quick Save 不受自动保留清理影响。
+- 损坏现场隔离并支持安全删除。
+
+### Snapshot Backup
+
+- ZIP Export / Import、manifest.json、SHA256 和原子导入。
+- 导入保留原工作区归属，工作区不匹配时禁止 Restore；拒绝不支持的版本/Schema、路径穿越和 malformed package。
+- 导入后重建人类可读的 summary.md。
+
+### UI
+
+- Light / Dark / Follow Windows 主题。
+- 中文界面及主题化确认、错误窗口。
+- Windows 布局和工作现场预览改进。
+
+### Safety / Control
+
+- 不自动发送 Codex 内容。
+- 不自动执行 Codex 任务。
+- 不自动 Restore。
+- 不执行 Git 写操作。
+- 交接、切换、Restore 和导入仍需要用户确认。
+
 ## 1.1.1 Beta 3 — 2026-09-18
 
 - 更新检查在 GitHub API 限流或暂时不可用时会自动改用公开的 Release Feed，减少共享网络或代理环境下的检查失败。
