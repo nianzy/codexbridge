@@ -76,8 +76,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     private bool includeHandoffProjectFiles;
     private readonly WorkspaceSnapshotService snapshotService = new();
     private readonly SnapshotPackageService snapshotPackageService;
+    private readonly SnapshotAutoIndexService snapshotAutoIndexService = new();
     private WorkspaceSnapshotEntry? selectedSnapshot;
     private string snapshotName = string.Empty;
+    private bool autoSaveBeforeWorkspaceSwitch;
+    private bool promptSaveBeforeExit;
+    private int autoSnapshotRetentionCount = 10;
+    private bool workspaceSwitchInProgress;
+    private string snapshotOperationErrorMessage = string.Empty;
     private string snapshotImportErrorMessage = string.Empty;
 
     public MainWindowViewModel(
@@ -97,11 +103,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         this.uiLog = uiLog ?? NullCodexAppLog.Instance;
         this.clipboardService = clipboardService ?? ClipboardService.Shared;
         snapshotPackageService = new SnapshotPackageService(snapshotService);
-        this.confirmWorkspaceSwitch = confirmWorkspaceSwitch ?? (() => MessageBox.Show(
-            "Current context or handoff contains unsaved content.\n\nClear and switch workspace?",
-            "Workspace",
-            MessageBoxButton.OKCancel,
-            MessageBoxImage.Warning));
+        this.confirmWorkspaceSwitch = confirmWorkspaceSwitch ?? (() =>
+            WorkspaceSwitchConfirmView.ShowConfirmation(AutoSaveBeforeWorkspaceSwitch)
+                ? MessageBoxResult.OK : MessageBoxResult.Cancel);
         this.codexClientFactory = codexClientFactory;
         RefreshCommand = new AsyncRelayCommand(RefreshAsync);
         RefreshActiveCommand = new AsyncRelayCommand(RefreshActiveAsync);
@@ -111,7 +115,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         CopyDraftCommand = new AsyncRelayCommand(CopyDraftAsync);
         OpenChatGptCommand = new RelayCommand(OpenChatGpt);
         ExportDraftCommand = new RelayCommand(ExportDraft);
-        AddWorkspaceCommand = new RelayCommand(AddWorkspace);
+        AddWorkspaceCommand = new AsyncRelayCommand(AddWorkspaceAsync);
         NewNoteCommand = new RelayCommand(NewNote);
         OpenNoteCommand = new RelayCommand(OpenNote);
         DeleteNoteCommand = new RelayCommand(DeleteNote);
@@ -124,6 +128,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         CopyHandoffCommand = new AsyncRelayCommand(CopyHandoffAsync);
         ExportHandoffCommand = new RelayCommand(ExportHandoff);
         UseCurrentSessionCommand = new RelayCommand(UseCurrentSessionForHandoff);
+        QuickSaveSnapshotCommand = new AsyncRelayCommand(QuickSaveCurrentSnapshotAsync);
         IgnoreFolders = new ObservableCollection<string>(ProjectContextService.DefaultIgnoreFolders);
         Notes = new ObservableCollection<NoteItem>();
         GitChangedFiles = new ObservableCollection<GitChangedFile>();
@@ -137,7 +142,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         CodexThreadsView.Filter = FilterCodexThread;
         ConversationsView.SortDescriptions.Add(new SortDescription(nameof(ConversationListItemViewModel.UpdatedAt), ListSortDirection.Descending));
         CodexThreadsView.SortDescriptions.Add(new SortDescription(nameof(CodexThreadListItemViewModel.UpdatedAt), ListSortDirection.Descending));
-        if (Workspaces.FirstOrDefault() is { } initialWorkspace) TrySwitchWorkspace(initialWorkspace, requireConfirmation: false);
+        if (Workspaces.FirstOrDefault() is { } initialWorkspace) CommitWorkspaceSwitch(initialWorkspace);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -186,6 +191,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     public ICommand CopyHandoffCommand { get; }
     public ICommand ExportHandoffCommand { get; }
     public ICommand UseCurrentSessionCommand { get; }
+    public ICommand QuickSaveSnapshotCommand { get; }
 
     public string HandoffTarget { get => handoffTarget; set { if (SetProperty(ref handoffTarget, value)) UpdateHandoffPreview(); } }
     public string HandoffTemplate { get => handoffTemplate; set { if (SetProperty(ref handoffTemplate, value)) UpdateHandoffPreview(); } }
@@ -354,17 +360,16 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         }
     }
 
-    public WorkspaceItem? WorkspaceSelection
-    {
-        get => SelectedWorkspace;
-        set
-        {
-            if (value is not null && !Equals(value, SelectedWorkspace)) TrySwitchWorkspace(value);
-            OnPropertyChanged();
-        }
-    }
+    public WorkspaceItem? WorkspaceSelection => SelectedWorkspace;
+    public bool IsWorkspaceSwitchInProgress => workspaceSwitchInProgress;
 
     public string NewWorkspacePath { get => newWorkspacePath; set => SetProperty(ref newWorkspacePath, value); }
+    public void ApplyWorkspaceSettings(bool autoSaveBeforeSwitch, bool promptBeforeExit, int retentionCount)
+    {
+        AutoSaveBeforeWorkspaceSwitch = autoSaveBeforeSwitch;
+        PromptSaveBeforeExit = promptBeforeExit;
+        AutoSnapshotRetentionCount = retentionCount;
+    }
     public string ProjectFilePreviewTitle { get => projectFilePreviewTitle; private set => SetProperty(ref projectFilePreviewTitle, value); }
     public string ProjectFilePreviewText { get => projectFilePreviewText; private set => SetProperty(ref projectFilePreviewText, value); }
     public int ProjectFileCount { get; private set; }
@@ -388,6 +393,15 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     public bool CanRenameSnapshot => SelectedSnapshot?.Snapshot is not null;
     public bool CanDeleteSnapshot => SelectedSnapshot is not null;
     public string SnapshotName { get => snapshotName; set => SetProperty(ref snapshotName, value); }
+    public bool AutoSaveBeforeWorkspaceSwitch { get => autoSaveBeforeWorkspaceSwitch; set => SetProperty(ref autoSaveBeforeWorkspaceSwitch, value); }
+    public bool PromptSaveBeforeExit { get => promptSaveBeforeExit; set => SetProperty(ref promptSaveBeforeExit, value); }
+    public int AutoSnapshotRetentionCount
+    {
+        get => autoSnapshotRetentionCount;
+        set => SetProperty(ref autoSnapshotRetentionCount, Math.Clamp(value, 3, 50));
+    }
+    public string SnapshotOperationErrorMessage { get => snapshotOperationErrorMessage; private set => SetProperty(ref snapshotOperationErrorMessage, value); }
+    public void SetSnapshotOperationError(string message) => SnapshotOperationErrorMessage = message;
     public string SnapshotImportErrorMessage { get => snapshotImportErrorMessage; private set => SetProperty(ref snapshotImportErrorMessage, value); }
     public NoteItem? SelectedNote { get; set; }
     public string GitBranch
@@ -1089,7 +1103,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     {
         SnapshotEntries.Clear();
         if (SelectedWorkspace is null) return;
-        foreach (var entry in snapshotService.List(SelectedWorkspace.Path)) SnapshotEntries.Add(entry);
+        var autoIds = snapshotAutoIndexService.Read(SelectedWorkspace.Path).SnapshotIds;
+        foreach (var entry in snapshotService.List(SelectedWorkspace.Path))
+        {
+            SnapshotEntries.Add(entry with { IsAuto = entry.Snapshot is not null && autoIds.Contains(entry.Snapshot.SnapshotId) });
+        }
     }
 
     public string GetSelectedSnapshotExportFileName() =>
@@ -1154,13 +1172,83 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     public async Task<bool> SaveCurrentSnapshotAsync(string requestedName)
     {
         if (SelectedWorkspace is null) { StatusText = "请先选择工作区。"; return false; }
+        var snapshot = await BuildCurrentSnapshotAsync(requestedName);
+        snapshotService.Save(SelectedWorkspace.Path, snapshot);
+        RefreshSnapshots();
+        StatusText = "工作现场已保存。";
+        return true;
+    }
+
+    public async Task<bool> QuickSaveCurrentSnapshotAsync()
+    {
+        SnapshotOperationErrorMessage = string.Empty;
+        if (SelectedWorkspace is null)
+        {
+            SnapshotOperationErrorMessage = "请先选择工作区。";
+            StatusText = UiStrings.QuickSaveFailed(SnapshotOperationErrorMessage);
+            return false;
+        }
+
+        try
+        {
+            var snapshot = await BuildCurrentSnapshotAsync($"快速保存 {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+            snapshotService.Save(SelectedWorkspace.Path, snapshot);
+            RefreshSnapshots();
+            StatusText = UiStrings.QuickSaveSucceeded;
+            return true;
+        }
+        catch (Exception exception)
+        {
+            SnapshotOperationErrorMessage = exception.Message;
+            StatusText = UiStrings.QuickSaveFailed(exception.Message);
+            return false;
+        }
+    }
+
+    public async Task<bool> HasUnsavedSnapshotChangesAsync()
+    {
+        if (!PromptSaveBeforeExit || SelectedWorkspace is null) return false;
+        var current = await BuildCurrentSnapshotAsync("exit-check");
+        var latest = snapshotService.List(SelectedWorkspace.Path)
+            .Where(entry => entry.Snapshot is not null && WorkspaceSnapshotService.IsWorkspaceMatch(entry.Snapshot, SelectedWorkspace.Path))
+            .Select(entry => entry.Snapshot!)
+            .OrderByDescending(snapshot => snapshot.CreatedAt)
+            .ThenByDescending(snapshot => snapshot.UpdatedAt)
+            .FirstOrDefault();
+        return latest is null || WorkspaceStateFingerprint.Compute(latest) != WorkspaceStateFingerprint.Compute(current);
+    }
+
+    public async Task<bool> SaveExitSnapshotAsync()
+    {
+        SnapshotOperationErrorMessage = string.Empty;
+        if (SelectedWorkspace is null) return true;
+        try
+        {
+            var snapshot = await BuildCurrentSnapshotAsync($"退出前保存 {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+            snapshotService.Save(SelectedWorkspace.Path, snapshot);
+            RefreshSnapshots();
+            StatusText = "工作现场已保存。";
+            return true;
+        }
+        catch (Exception exception)
+        {
+            SnapshotOperationErrorMessage = exception.Message;
+            StatusText = UiStrings.ExitSnapshotSaveFailed;
+            return false;
+        }
+    }
+
+    private async Task<WorkspaceSnapshot> BuildCurrentSnapshotAsync(string requestedName)
+    {
+        if (SelectedWorkspace is null) throw new InvalidOperationException("请先选择工作区。");
         var now = DateTimeOffset.Now;
-        var name = string.IsNullOrWhiteSpace(requestedName) ? (string.IsNullOrWhiteSpace(HandoffTitle) ? CurrentSessionTitle : HandoffTitle) : requestedName.Trim();
+        var name = string.IsNullOrWhiteSpace(requestedName)
+            ? (string.IsNullOrWhiteSpace(HandoffTitle) ? CurrentSessionTitle : HandoffTitle)
+            : requestedName.Trim();
         if (string.IsNullOrWhiteSpace(name) || name == UiStrings.NoSession) name = $"{now:yyyy-MM-dd HH:mm} 工作现场";
-        // Capture only the current visible session's row state before any asynchronous Git read.
         var selections = BuildSnapshotSelections();
         var git = await BuildSnapshotGitAsync();
-        var snapshot = new WorkspaceSnapshot
+        return new WorkspaceSnapshot
         {
             SnapshotId = $"{now:yyyyMMdd-HHmmss}-{Guid.NewGuid().ToString("N")[..8]}",
             Name = name,
@@ -1172,10 +1260,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             Handoff = new WorkspaceSnapshotHandoff { Target = HandoffTarget, Template = HandoffTemplate, Title = HandoffTitle, Task = HandoffTask, CurrentState = HandoffCurrentState, Constraints = HandoffConstraints, NextAction = HandoffNextAction, IncludeContextPack = IncludeHandoffContext, IncludeWorkspace = IncludeHandoffWorkspace, IncludeGitState = IncludeHandoffGit, IncludeProjectFileSummary = IncludeHandoffProjectFiles },
             Git = git,
         };
-        snapshotService.Save(SelectedWorkspace.Path, snapshot);
-        RefreshSnapshots();
-        StatusText = "工作现场已保存。";
-        return true;
     }
 
     public async Task<bool> RestoreSelectedSnapshotAsync()
@@ -1214,7 +1298,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             HandoffTitle = HandoffTitle,
             Git = await BuildSnapshotGitAsync(currentWorkspace.Path),
         };
-        return SnapshotPreviewBuilder.Build(snapshot, current);
+        return SnapshotPreviewBuilder.Build(snapshot, current, SelectedSnapshot.IsAuto ? UiStrings.SnapshotTypeAutomatic : UiStrings.SnapshotTypeManual);
     }
 
     public void RenameSelectedSnapshot(string name)
@@ -1222,6 +1306,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         if (SelectedWorkspace is null || SelectedSnapshot?.Snapshot is null || string.IsNullOrWhiteSpace(name)) return;
         var snapshotId = SelectedSnapshot.Snapshot.SnapshotId;
         snapshotService.Rename(SelectedWorkspace.Path, snapshotId, name.Trim());
+        snapshotAutoIndexService.Remove(SelectedWorkspace.Path, snapshotId);
         RefreshSnapshots();
         SelectedSnapshot = SnapshotEntries.FirstOrDefault(entry => entry.Snapshot?.SnapshotId == snapshotId);
         StatusText = UiStrings.SnapshotRenamed;
@@ -1233,6 +1318,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         var entry = SelectedSnapshot;
         if (!confirmDelete(entry)) return false;
         snapshotService.DeleteDirectory(SelectedWorkspace.Path, entry.DirectoryPath);
+        if (entry.Snapshot is not null)
+        {
+            snapshotAutoIndexService.Remove(SelectedWorkspace.Path, entry.Snapshot.SnapshotId);
+        }
         RefreshSnapshots();
         SelectedSnapshot = null;
         StatusText = UiStrings.SnapshotDeleted;
@@ -1329,31 +1418,145 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             : full.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
     }
 
-    public bool TrySwitchWorkspace(WorkspaceItem target, bool requireConfirmation = true)
+    private async Task<bool> TryAutoSaveBeforeWorkspaceSwitchAsync()
     {
-        var sourcePath = SelectedWorkspace?.Path ?? "(none)";
-        uiLog.Write($"workspace switch requested; source={sourcePath}; target={target.Path}");
-        if (SelectedWorkspace is not null
-            && string.Equals(NormalizePath(SelectedWorkspace.Path), NormalizePath(target.Path), StringComparison.OrdinalIgnoreCase))
+        if (!AutoSaveBeforeWorkspaceSwitch || SelectedWorkspace is null) return true;
+        SnapshotOperationErrorMessage = string.Empty;
+        var workspacePath = SelectedWorkspace.Path;
+        try
         {
-            OnPropertyChanged(nameof(WorkspaceSelection));
+            uiLog.Write("workspace auto snapshot current fingerprint start");
+            var current = await BuildCurrentSnapshotAsync($"自动保存 · 切换工作区 · {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+            uiLog.Write("workspace auto snapshot current fingerprint complete");
+            var latest = snapshotService.List(workspacePath)
+                .Where(entry => entry.Snapshot is not null && WorkspaceSnapshotService.IsWorkspaceMatch(entry.Snapshot, workspacePath))
+                .Select(entry => entry.Snapshot!)
+                .OrderByDescending(snapshot => snapshot.CreatedAt)
+                .ThenByDescending(snapshot => snapshot.UpdatedAt)
+                .FirstOrDefault();
+            uiLog.Write("workspace auto snapshot latest comparison complete");
+            if (latest is not null && WorkspaceStateFingerprint.Compute(latest) == WorkspaceStateFingerprint.Compute(current))
+            {
+                StatusText = UiStrings.AutoSnapshotUnchanged;
+                return true;
+            }
+
+            uiLog.Write("workspace auto snapshot save start");
+            snapshotService.Save(workspacePath, current);
+            uiLog.Write("workspace auto snapshot save complete");
+            snapshotAutoIndexService.MarkAuto(workspacePath, current.SnapshotId);
+            uiLog.Write("workspace auto snapshot index mark complete");
+            var cleanupSucceeded = RetainAutoSnapshots(workspacePath);
+            uiLog.Write("workspace auto snapshot retention complete");
+            RefreshSnapshots();
+            StatusText = cleanupSucceeded ? UiStrings.AutoSnapshotSaved : UiStrings.AutoSnapshotCleanupFailed;
+            return true;
+        }
+        catch (Exception exception)
+        {
+            SnapshotOperationErrorMessage = exception.Message;
+            StatusText = UiStrings.AutoSnapshotSwitchFailed;
+            uiLog.Write($"workspace auto snapshot failed; message={exception.Message}");
+            return false;
+        }
+    }
+
+    private bool RetainAutoSnapshots(string workspacePath)
+    {
+        var index = snapshotAutoIndexService.Read(workspacePath);
+        if (index.IsCorrupt)
+        {
+            uiLog.Write("snapshot auto index corrupt; retention paused");
             return true;
         }
 
-        if (requireConfirmation && (ContextItems.Count > 0 || HandoffPreviewText.Length > 0) && confirmWorkspaceSwitch() != MessageBoxResult.OK)
+        snapshotAutoIndexService.PruneMissingEntries(workspacePath);
+        index = snapshotAutoIndexService.Read(workspacePath);
+        var autoEntries = snapshotService.List(workspacePath)
+            .Where(entry => entry.Snapshot is not null
+                && index.SnapshotIds.Contains(entry.Snapshot.SnapshotId)
+                && string.Equals(Path.GetFileName(entry.DirectoryPath), entry.Snapshot.SnapshotId, StringComparison.Ordinal))
+            .OrderByDescending(entry => entry.Snapshot!.CreatedAt)
+            .ToArray();
+        var cleanupSucceeded = true;
+        foreach (var entry in autoEntries.Skip(AutoSnapshotRetentionCount))
         {
-            uiLog.Write("workspace switch rolled back; reason=cancelled");
+            try
+            {
+                snapshotService.DeleteDirectory(workspacePath, entry.DirectoryPath);
+                snapshotAutoIndexService.Remove(workspacePath, entry.Snapshot!.SnapshotId);
+            }
+            catch (Exception exception)
+            {
+                cleanupSucceeded = false;
+                uiLog.Write($"snapshot auto retention delete failed; id={entry.Snapshot!.SnapshotId}; message={exception.Message}");
+            }
+        }
+
+        return cleanupSucceeded;
+    }
+
+    public async Task<bool> TrySwitchWorkspaceAsync(WorkspaceItem target, bool requireConfirmation = true)
+    {
+        if (workspaceSwitchInProgress)
+        {
+            uiLog.Write($"workspace switch ignored; reason=in-progress; target={target.Path}");
             OnPropertyChanged(nameof(WorkspaceSelection));
             return false;
         }
 
+        workspaceSwitchInProgress = true;
+        OnPropertyChanged(nameof(IsWorkspaceSwitchInProgress));
+        var sourcePath = SelectedWorkspace?.Path ?? "(none)";
+        uiLog.Write($"workspace switch requested; source={sourcePath}; target={target.Path}");
+        try
+        {
+            if (SelectedWorkspace is not null
+                && string.Equals(NormalizePath(SelectedWorkspace.Path), NormalizePath(target.Path), StringComparison.OrdinalIgnoreCase))
+            {
+                OnPropertyChanged(nameof(WorkspaceSelection));
+                return true;
+            }
+
+            if (requireConfirmation && (ContextItems.Count > 0 || HandoffPreviewText.Length > 0) && confirmWorkspaceSwitch() != MessageBoxResult.OK)
+            {
+                uiLog.Write("workspace switch rolled back; reason=cancelled");
+                OnPropertyChanged(nameof(WorkspaceSelection));
+                return false;
+            }
+
+            var fullPath = NormalizePath(target.Path);
+            var exists = Directory.Exists(fullPath);
+            uiLog.Write($"workspace switch preflight complete; exists={exists}; target={fullPath}");
+            if (!exists)
+            {
+                StatusText = "工作区初始化失败。";
+                OnPropertyChanged(nameof(WorkspaceSelection));
+                return false;
+            }
+
+            if (!await TryAutoSaveBeforeWorkspaceSwitchAsync())
+            {
+                OnPropertyChanged(nameof(WorkspaceSelection));
+                return false;
+            }
+
+            uiLog.Write($"workspace switch commit start; target={fullPath}");
+            return CommitWorkspaceSwitch(target);
+        }
+        finally
+        {
+            workspaceSwitchInProgress = false;
+            OnPropertyChanged(nameof(IsWorkspaceSwitchInProgress));
+        }
+    }
+
+    private bool CommitWorkspaceSwitch(WorkspaceItem target)
+    {
         try
         {
             var fullPath = NormalizePath(target.Path);
-            var exists = Directory.Exists(fullPath);
-            uiLog.Write($"workspace target exists={exists}; target={fullPath}");
-            if (!exists) throw new DirectoryNotFoundException($"Workspace directory does not exist: {fullPath}");
-
+            if (!Directory.Exists(fullPath)) throw new DirectoryNotFoundException($"Workspace directory does not exist: {fullPath}");
             CreateWorkspaceDirectory(Path.Combine(fullPath, ".ai"), ".ai root");
             CreateWorkspaceDirectory(Path.Combine(fullPath, ".ai", "conversation"), "conversation");
             CreateWorkspaceDirectory(Path.Combine(fullPath, ".ai", "notes"), "notes");
@@ -1380,7 +1583,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             CodexThreadsView.Refresh();
             _ = RefreshGitStatusAsync();
             StatusText = UiStrings.Ready;
-            uiLog.Write($"workspace switch committed; target={fullPath}");
+            uiLog.Write($"workspace switch commit complete; target={fullPath}");
             return true;
         }
         catch (Exception exception)
@@ -1406,7 +1609,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         }
     }
 
-    public bool AddWorkspaceFromPath(string path)
+    public async Task<bool> AddWorkspaceFromPathAsync(string path)
     {
         try
         {
@@ -1433,8 +1636,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             Workspaces.Add(item);
             WorkspaceStore.Save(Workspaces);
             NewWorkspacePath = string.Empty;
-            TrySwitchWorkspace(item);
-            return true;
+            return await TrySwitchWorkspaceAsync(item);
         }
         catch (Exception exception)
         {
@@ -1444,7 +1646,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         }
     }
 
-    private void AddWorkspace() => AddWorkspaceFromPath(NewWorkspacePath);
+    private async Task AddWorkspaceAsync() => await AddWorkspaceFromPathAsync(NewWorkspacePath);
 
     private string NotesDirectory => SelectedWorkspace is null ? string.Empty : Path.Combine(SelectedWorkspace.Path, ".ai", "notes");
 

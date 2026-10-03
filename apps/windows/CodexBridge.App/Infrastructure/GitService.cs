@@ -14,6 +14,14 @@ public sealed record GitStatusSnapshot(string Branch, IReadOnlyList<GitChangedFi
 
 public sealed class GitService
 {
+    public static readonly TimeSpan DefaultOperationTimeout = TimeSpan.FromSeconds(10);
+    private readonly TimeSpan operationTimeout;
+
+    public GitService(TimeSpan? operationTimeout = null)
+    {
+        this.operationTimeout = operationTimeout ?? DefaultOperationTimeout;
+    }
+
     public async Task<GitStatusSnapshot> GetStatusAsync(string workspace, CancellationToken cancellationToken = default)
     {
         try
@@ -47,15 +55,45 @@ public sealed class GitService
 
     private static string ParseCode(string code) => code.Contains('D') ? "D" : code.Contains('A') || code.Contains('?') ? "A" : "M";
 
-    private static async Task<string> RunAsync(string workspace, IReadOnlyList<string> arguments, CancellationToken cancellationToken)
+    private async Task<string> RunAsync(string workspace, IReadOnlyList<string> arguments, CancellationToken cancellationToken)
     {
         var start = new ProcessStartInfo("git") { WorkingDirectory = workspace, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
         using var process = Process.Start(start) ?? throw new InvalidOperationException("Git not found");
-        var stdout = await process.StandardOutput.ReadToEndAsync(cancellationToken);
-        var stderr = await process.StandardError.ReadToEndAsync(cancellationToken);
-        await process.WaitForExitAsync(cancellationToken);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(operationTimeout);
+        var stdoutTask = process.StandardOutput.ReadToEndAsync(timeout.Token);
+        var stderrTask = process.StandardError.ReadToEndAsync(timeout.Token);
+        string stdout;
+        string stderr;
+        try
+        {
+            await process.WaitForExitAsync(timeout.Token);
+            stdout = await stdoutTask;
+            stderr = await stderrTask;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            TryKill(process);
+            throw new TimeoutException($"Git operation timed out after {operationTimeout.TotalSeconds:0} seconds.");
+        }
+        catch (OperationCanceledException)
+        {
+            TryKill(process);
+            throw;
+        }
         if (process.ExitCode != 0) throw new InvalidOperationException(stderr.Trim());
         return stdout;
+    }
+
+    private static void TryKill(Process process)
+    {
+        try
+        {
+            if (!process.HasExited) process.Kill(entireProcessTree: true);
+        }
+        catch (InvalidOperationException)
+        {
+        }
     }
 }

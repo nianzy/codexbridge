@@ -1,5 +1,6 @@
 using System.Windows;
 using System.IO;
+using System.ComponentModel;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
@@ -18,6 +19,8 @@ public partial class MainWindow : Window
     private WindowSettings windowSettings;
     private string themeMode;
     private bool suppressWorkspaceComboBoxSelection;
+    private bool isExitConfirmed;
+    private bool exitPromptInProgress;
 
     public MainWindow(MainWindowViewModel viewModel, ICodexAppLog? uiLog = null)
     {
@@ -25,6 +28,7 @@ public partial class MainWindow : Window
         this.viewModel = viewModel;
         this.uiLog = uiLog ?? new CodexAppLog(Path.Combine(CodexBridgeWindowsPaths.SupportDirectory, "Logs", "ui.log"));
         windowSettings = WindowSettingsStore.Load();
+        viewModel.ApplyWorkspaceSettings(windowSettings.AutoSaveBeforeWorkspaceSwitch, windowSettings.PromptSaveBeforeExit, windowSettings.AutoSnapshotRetentionCount);
         themeMode = windowSettings.Theme;
         ThemeManager.Apply(themeMode);
         RestoreWindowSettings();
@@ -34,6 +38,7 @@ public partial class MainWindow : Window
         viewModel.Turns.CollectionChanged += OnTurnsChanged;
         Loaded += OnLoaded;
         Closed += OnClosed;
+        Closing += OnClosing;
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -61,13 +66,70 @@ public partial class MainWindow : Window
     {
         try
         {
-            windowSettings = new WindowSettings(Width, Height, double.IsNaN(Left) ? null : Left, double.IsNaN(Top) ? null : Top, LeftPanelColumn.ActualWidth, RightPanelColumn.ActualWidth, themeMode, DraftPanelControl.IsExpanded);
+            windowSettings = new WindowSettings(Width, Height, double.IsNaN(Left) ? null : Left, double.IsNaN(Top) ? null : Top, LeftPanelColumn.ActualWidth, RightPanelColumn.ActualWidth, themeMode, DraftPanelControl.IsExpanded, viewModel.AutoSaveBeforeWorkspaceSwitch, viewModel.PromptSaveBeforeExit, viewModel.AutoSnapshotRetentionCount);
             WindowSettingsStore.Save(windowSettings);
             uiLog.Write("window settings saved");
         }
         catch (Exception exception)
         {
             uiLog.Write($"window settings save exception; type={exception.GetType().FullName}; message={exception.Message}");
+        }
+    }
+
+    private async void OnClosing(object? sender, CancelEventArgs e)
+    {
+        if (isExitConfirmed || !viewModel.PromptSaveBeforeExit || viewModel.SelectedWorkspace is null) return;
+        if (exitPromptInProgress)
+        {
+            e.Cancel = true;
+            return;
+        }
+
+        exitPromptInProgress = true;
+        e.Cancel = true;
+        try
+        {
+            bool hasChanges;
+            try
+            {
+                hasChanges = await viewModel.HasUnsavedSnapshotChangesAsync();
+            }
+            catch (Exception exception)
+            {
+                viewModel.SetSnapshotOperationError(UiStrings.ExitSnapshotSaveFailed);
+                ShowSnapshotError(exception.Message);
+                return;
+            }
+
+            if (!hasChanges)
+            {
+                isExitConfirmed = true;
+                Close();
+                return;
+            }
+
+            var choice = ShowExitProtectionDialog();
+            if (choice == ExitProtectionChoice.Cancel) return;
+            if (choice == ExitProtectionChoice.ExitWithoutSaving)
+            {
+                isExitConfirmed = true;
+                Close();
+                return;
+            }
+
+            if (await viewModel.SaveExitSnapshotAsync())
+            {
+                isExitConfirmed = true;
+                Close();
+            }
+            else
+            {
+                ShowSnapshotError(viewModel.SnapshotOperationErrorMessage);
+            }
+        }
+        finally
+        {
+            exitPromptInProgress = false;
         }
     }
 
@@ -96,6 +158,46 @@ public partial class MainWindow : Window
 
     private void OpenSnapshotsClick(object sender, RoutedEventArgs e) => viewModel.OpenSnapshotsWindow();
 
+    private async void QuickSaveClick(object sender, RoutedEventArgs e)
+    {
+        if (await viewModel.QuickSaveCurrentSnapshotAsync()) return;
+        ShowSnapshotError(viewModel.SnapshotOperationErrorMessage);
+    }
+
+    private ExitProtectionChoice ShowExitProtectionDialog()
+    {
+        var view = new ExitProtectionView();
+        var window = new Window
+        {
+            Title = (string)Application.Current.FindResource("UiUnsavedSnapshotExitTitle"),
+            Width = 460,
+            Height = 220,
+            Owner = this,
+            Content = view,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            ResizeMode = ResizeMode.NoResize,
+        };
+        window.ShowDialog();
+        return view.Choice;
+    }
+
+    public void ShowSnapshotError(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message)) return;
+        var view = new SnapshotImportErrorView { DataContext = message };
+        var window = new Window
+        {
+            Title = (string)Application.Current.FindResource("UiSnapshotOperationErrorTitle"),
+            Width = 460,
+            Height = 210,
+            Owner = this,
+            Content = view,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            ResizeMode = ResizeMode.NoResize,
+        };
+        window.ShowDialog();
+    }
+
     private void OpenWorkspaceClick(object sender, RoutedEventArgs e)
     {
         var window = new Window
@@ -107,26 +209,35 @@ public partial class MainWindow : Window
         window.ShowDialog();
     }
 
-    private void WorkspaceComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private async void WorkspaceComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (suppressWorkspaceComboBoxSelection || e.AddedItems.Count == 0 || e.AddedItems[^1] is not WorkspaceItem candidate) return;
+        if (suppressWorkspaceComboBoxSelection || viewModel.IsWorkspaceSwitchInProgress || e.AddedItems.Count == 0 || e.AddedItems[^1] is not WorkspaceItem candidate) return;
 
         var committed = viewModel.SelectedWorkspace;
         if (committed is not null && string.Equals(committed.Path, candidate.Path, StringComparison.OrdinalIgnoreCase)) return;
 
-        viewModel.TrySwitchWorkspace(candidate);
-        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+        WorkspaceComboBox.IsEnabled = false;
+        try
         {
-            suppressWorkspaceComboBoxSelection = true;
-            try
+            var switchCommitted = await viewModel.TrySwitchWorkspaceAsync(candidate);
+            if (!switchCommitted && !string.IsNullOrWhiteSpace(viewModel.SnapshotOperationErrorMessage)) ShowSnapshotError(viewModel.SnapshotOperationErrorMessage);
+        }
+        finally
+        {
+            WorkspaceComboBox.IsEnabled = true;
+            _ = Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
             {
-                WorkspaceComboBox.GetBindingExpression(Selector.SelectedItemProperty)?.UpdateTarget();
-            }
-            finally
-            {
-                suppressWorkspaceComboBoxSelection = false;
-            }
-        }));
+                suppressWorkspaceComboBoxSelection = true;
+                try
+                {
+                    WorkspaceComboBox.GetBindingExpression(Selector.SelectedItemProperty)?.UpdateTarget();
+                }
+                finally
+                {
+                    suppressWorkspaceComboBoxSelection = false;
+                }
+            }));
+        }
     }
 
     private void OnTurnsChanged(object? sender, NotifyCollectionChangedEventArgs e)

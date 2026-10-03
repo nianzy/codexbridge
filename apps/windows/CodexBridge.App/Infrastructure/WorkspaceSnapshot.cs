@@ -74,5 +74,7 @@ public sealed record WorkspaceSnapshotChangedFile
 
 public sealed record WorkspaceSnapshotEntry(string DirectoryPath, WorkspaceSnapshot? Snapshot, string? Error)
 {
+    public bool IsAuto { get; init; }
     public string DisplayName => Snapshot?.Name ?? "无法读取";
+    public string TypeDisplay => Snapshot is null ? string.Empty : IsAuto ? UiStrings.SnapshotAutomatic : UiStrings.SnapshotManual;
 }

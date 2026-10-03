@@ -11,7 +11,10 @@ public sealed record WindowSettings(
     double LeftPanelWidth = 280,
     double RightPanelWidth = 360,
     string Theme = "System",
-    bool DraftExpanded = true);
+    bool DraftExpanded = true,
+    bool AutoSaveBeforeWorkspaceSwitch = false,
+    bool PromptSaveBeforeExit = false,
+    int AutoSnapshotRetentionCount = 10);
 
 public static class WindowSettingsStore
 {

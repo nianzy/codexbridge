@@ -36,6 +36,7 @@
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                     <controls:StatusBadge VerticalAlignment="Center" />
                     <Button Content="⚙ 设置" Click="OpenSettingsClick" Style="{StaticResource SecondaryButtonStyle}" Padding="10,5" Margin="8,0,0,0" />
+                    <Button Content="{DynamicResource UiQuickSaveSnapshot}" Click="QuickSaveClick" Style="{StaticResource SecondaryButtonStyle}" Padding="10,5" Margin="8,0,0,0" />
                     <Button Content="{DynamicResource UiSnapshots}" Click="OpenSnapshotsClick" Style="{StaticResource SecondaryButtonStyle}" Padding="10,5" Margin="8,0,0,0" />
                     <Button Content="{DynamicResource UiWorkspace}" Click="OpenWorkspaceClick" Style="{StaticResource SecondaryButtonStyle}" Padding="10,5" Margin="8,0,0,0" />
                 </StackPanel>

@@ -50,6 +50,7 @@ public sealed record SnapshotPreviewModel
     public required string WorkspacePath { get; init; }
     public required string SnapshotId { get; init; }
     public required string SchemaVersion { get; init; }
+    public required string SnapshotType { get; init; }
     public int SelectionCount { get; init; }
     public int ContextCount { get; init; }
     public required string HandoffTitle { get; init; }
@@ -65,7 +66,7 @@ public sealed record SnapshotPreviewModel
 
 public static class SnapshotPreviewBuilder
 {
-    public static SnapshotPreviewModel Build(WorkspaceSnapshot snapshot, SnapshotPreviewCurrentState current)
+    public static SnapshotPreviewModel Build(WorkspaceSnapshot snapshot, SnapshotPreviewCurrentState current, string snapshotType = UiStrings.SnapshotTypeManual)
     {
         var workspaceMatch = WorkspaceSnapshotService.IsWorkspaceMatch(snapshot, current.WorkspacePath);
         var turns = snapshot.Selection.Select(item => new SnapshotTurnPreviewItem(
@@ -96,6 +97,7 @@ public static class SnapshotPreviewBuilder
             WorkspacePath = snapshot.Workspace.Path,
             SnapshotId = snapshot.SnapshotId,
             SchemaVersion = snapshot.SchemaVersion.ToString(),
+            SnapshotType = snapshotType,
             SelectionCount = snapshot.Selection.Count,
             ContextCount = snapshot.ContextItems.Count,
             HandoffTitle = string.IsNullOrWhiteSpace(snapshot.Handoff.Title) ? UiStrings.NotSet : snapshot.Handoff.Title,

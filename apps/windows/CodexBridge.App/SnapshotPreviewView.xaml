@@ -8,7 +8,7 @@
                 <TextBlock Text="{DynamicResource UiSnapshotInformation}" Style="{StaticResource PageHeadingStyle}"/>
                 <Grid Margin="0,8,0,14">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                    <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
                     <TextBlock Text="{DynamicResource UiSnapshotNameDisplay}" Foreground="{DynamicResource TextSecondary}"/><TextBlock Grid.Column="1" Text="{Binding Name}" TextWrapping="Wrap"/>
                     <TextBlock Grid.Row="1" Text="{DynamicResource UiSavedAt}" Foreground="{DynamicResource TextSecondary}"/><TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding CreatedAt}"/>
                     <TextBlock Grid.Row="2" Text="{DynamicResource UiUpdatedAt}" Foreground="{DynamicResource TextSecondary}"/><TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding UpdatedAt}"/>
@@ -16,6 +16,7 @@
                     <TextBlock Grid.Row="4" Text="{DynamicResource UiPath}" Foreground="{DynamicResource TextSecondary}"/><TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding WorkspacePath}" TextWrapping="Wrap"/>
                     <TextBlock Grid.Row="5" Text="{DynamicResource UiSnapshotId}" Foreground="{DynamicResource TextSecondary}"/><TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding SnapshotId}"/>
                     <TextBlock Grid.Column="2" Text="{DynamicResource UiSchema}" Foreground="{DynamicResource TextSecondary}"/><TextBlock Grid.Column="3" Text="{Binding SchemaVersion}"/>
+                    <TextBlock Grid.Row="6" Text="{DynamicResource UiSnapshotType}" Foreground="{DynamicResource TextSecondary}"/><TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding SnapshotType}"/>
                 </Grid>
                 <TextBlock Text="{DynamicResource UiSnapshotOverview}" Style="{StaticResource PageHeadingStyle}"/>
                 <TextBlock Margin="0,8,0,14" TextWrapping="Wrap"><Run Text="{DynamicResource UiSelectedTurnsDisplay}"/><Run Text="{Binding SelectionCount}"/><Run Text="&#x0a;"/><Run Text="{DynamicResource UiContextItemsDisplay}"/><Run Text="{Binding ContextCount}"/><Run Text="&#x0a;"/><Run Text="{DynamicResource UiHandoffDisplay}"/><Run Text="{Binding HandoffTitle}"/><Run Text="&#x0a;"/><Run Text="{DynamicResource UiGitBranchDisplay}"/><Run Text="{Binding GitBranch}"/></TextBlock>

@@ -57,6 +57,37 @@ public static class UiStrings
     public const string SnapshotImportMismatchWarning = "此工作现场导入后不能在当前工作区恢复，但仍可以导入并查看预览。";
     public const string SnapshotExported = "工作现场已导出。";
     public const string SnapshotImported = "工作现场已导入。";
+    public const string QuickSaveSnapshot = "快速保存";
+    public const string QuickSaveSucceeded = "工作现场已快速保存。";
+    public static string QuickSaveFailed(string reason) => $"快速保存工作现场失败：{reason}";
+    public const string SnapshotManual = "手动";
+    public const string SnapshotAutomatic = "自动";
+    public const string SnapshotTypeManual = "手动保存";
+    public const string SnapshotTypeAutomatic = "自动保存";
+    public const string AutoSaveBeforeWorkspaceSwitch = "切换工作区前自动保存工作现场";
+    public const string WorkspaceSwitchConfirmTitle = "Codex Bridge";
+    public const string WorkspaceSwitchUnsavedMessage = "当前上下文或交接中有未保存的内容。";
+    public const string WorkspaceSwitchAutoSaveMessage = "切换前会先自动保存当前工作现场，然后清空当前界面内容并切换工作区。";
+    public const string WorkspaceSwitchNoAutoSaveMessage = "切换工作区后，当前界面中的这些内容将被清空。";
+    public const string WorkspaceSwitchConfirmQuestion = "确认切换工作区吗？";
+    public const string SwitchWorkspace = "切换工作区";
+    public static string WorkspaceSwitchConfirmationMessage(bool autoSaveEnabled) =>
+        $"{WorkspaceSwitchUnsavedMessage}\n\n{(autoSaveEnabled ? WorkspaceSwitchAutoSaveMessage : WorkspaceSwitchNoAutoSaveMessage)}\n\n{WorkspaceSwitchConfirmQuestion}";
+    public const string PromptSaveBeforeExit = "退出应用前提示保存工作现场";
+    public const string AutoSnapshotRetention = "自动工作现场保留数量";
+    public const string AutoSnapshotRetentionHint = "仅清理自动保存的工作现场，不会删除手动保存、快速保存或导入的工作现场。";
+    public const string AutoSnapshotSaved = "工作现场已自动保存。";
+    public const string AutoSnapshotUnchanged = "当前工作现场无变化，无需自动保存。";
+    public const string AutoSnapshotFailed = "自动保存工作现场失败。";
+    public const string AutoSnapshotSwitchFailed = "自动保存工作现场失败，工作区未切换。";
+    public const string AutoSnapshotCleanupFailed = "工作现场已自动保存，但旧自动现场清理失败。";
+    public const string UnsavedSnapshotExitTitle = "Codex Bridge";
+    public const string UnsavedSnapshotExitMessage = "当前工作现场有未保存的变化。";
+    public const string SaveAndExit = "保存并退出";
+    public const string ExitWithoutSaving = "直接退出";
+    public const string ExitSnapshotSaveFailed = "工作现场保存失败，应用未退出。";
+    public const string SnapshotOperationErrorTitle = "Codex Bridge";
+    public const string SnapshotRetentionValidation = "请输入 3 到 50 之间的整数。";
     public static string SnapshotExportFailed(string reason) => $"工作现场导出失败：{reason}";
     public static string SnapshotImportFailed(string reason) => $"工作现场导入失败：{reason}";
 

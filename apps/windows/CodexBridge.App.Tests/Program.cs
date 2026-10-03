@@ -34,6 +34,9 @@ var tests = new (string Name, Func<Task> Test)[]
     ("workspace failure restores UI selection", WorkspaceFailureRestoresSelectionAsync),
     ("workspace success commits UI selection", WorkspaceSuccessCommitsSelectionAsync),
     ("workspace selection restore does not re-enter switch", WorkspaceRestoreDoesNotReenterAsync),
+    ("workspace confirmation resources and async wiring", WorkspaceConfirmationResourcesAsync),
+    ("workspace confirmation cancel preserves state before auto save", () => WorkspaceConfirmationOutcomeAsync(false)),
+    ("workspace confirmation continues the existing async switch", () => WorkspaceConfirmationOutcomeAsync(true)),
     ("context pack renders all sections in order", ContextPackRendersAsync),
     ("context pack keys distinguish same titles", ContextPackKeysAreDistinctAsync),
     ("context pack empty render is safe", ContextPackEmptyRenderAsync),
@@ -82,6 +85,14 @@ var tests = new (string Name, Func<Task> Test)[]
     ("snapshot package allows workspace mismatch without rewriting origin", SnapshotPackageAllowsWorkspaceMismatchAsync),
     ("snapshot import failure feedback is localized and non-mutating", SnapshotImportFailureFeedbackAsync),
     ("snapshot import error dialog resources are themed", SnapshotImportErrorDialogResourcesAsync),
+    ("snapshot auto index is atomic and fail closed", SnapshotAutoIndexIsAtomicAndFailClosedAsync),
+    ("workspace state fingerprint ignores metadata and detects state", WorkspaceStateFingerprintDetectsStateAsync),
+    ("quick save creates a manual snapshot without changing state", QuickSaveCreatesManualSnapshotAsync),
+    ("snapshot settings remain backward compatible", SnapshotSettingsRemainBackwardCompatibleAsync),
+    ("workspace auto save uses an async switch path", WorkspaceAutoSaveUsesAsyncPathAsync),
+    ("workspace auto save commits only after saving", WorkspaceAutoSaveCommitsAfterSaveAsync),
+    ("workspace auto save failure keeps the source workspace", WorkspaceAutoSaveFailureKeepsSourceAsync),
+    ("workspace auto save deduplicates unchanged state", WorkspaceAutoSaveDeduplicatesUnchangedAsync),
     ("handoff embeds context and git state", HandoffContextAndGitRenderAsync),
     ("handoff keeps normal user task", HandoffNormalTaskAsync),
     ("handoff removes attachment wrapper and path", HandoffAttachmentWrapperAsync),
@@ -380,11 +391,11 @@ static async Task WorkspacePickerAddAsync()
         var addedPath = Path.Combine(scope.Root, "AddedWorkspace");
         Directory.CreateDirectory(addedPath);
 
-        Assert(viewModel.AddWorkspaceFromPath(addedPath + Path.DirectorySeparatorChar), "valid workspace was not added");
+        Assert(await viewModel.AddWorkspaceFromPathAsync(addedPath + Path.DirectorySeparatorChar), "valid workspace was not added");
         var count = viewModel.Workspaces.Count;
-        Assert(!viewModel.AddWorkspaceFromPath(addedPath.ToUpperInvariant()), "duplicate workspace path was added");
+        Assert(!await viewModel.AddWorkspaceFromPathAsync(addedPath.ToUpperInvariant()), "duplicate workspace path was added");
         Assert(viewModel.Workspaces.Count == count, "duplicate workspace changed the list");
-        Assert(!viewModel.AddWorkspaceFromPath(Path.Combine(scope.Root, "missing")), "missing workspace was added");
+        Assert(!await viewModel.AddWorkspaceFromPathAsync(Path.Combine(scope.Root, "missing")), "missing workspace was added");
         Assert(WorkspaceStore.Load().Any(item => string.Equals(item.Path, Path.GetFullPath(addedPath), StringComparison.OrdinalIgnoreCase)), "workspace was not persisted");
     }
     finally
@@ -409,22 +420,22 @@ static async Task WorkspaceSwitchIsAtomicAsync()
         await using var cancelled = new MainWindowViewModel(scope.Repository, importer, client, confirmWorkspaceSwitch: () => MessageBoxResult.Cancel);
         cancelled.Workspaces.Add(current);
         cancelled.Workspaces.Add(target);
-        Assert(cancelled.TrySwitchWorkspace(current, requireConfirmation: false), "initial workspace setup failed");
+        Assert(await cancelled.TrySwitchWorkspaceAsync(current, requireConfirmation: false), "initial workspace setup failed");
         cancelled.ContextItems.Add(new ContextPackItem("Note", "keep", "test", "content", "keep", 0, "keep"));
-        Assert(!cancelled.TrySwitchWorkspace(target), "cancelled workspace switch committed");
+        Assert(!await cancelled.TrySwitchWorkspaceAsync(target), "cancelled workspace switch committed");
         Assert(cancelled.SelectedWorkspace?.Path == current.Path && cancelled.ContextItems.Count == 1, "cancel did not preserve workspace and context");
 
         await using var committed = new MainWindowViewModel(scope.Repository, importer, FakeCodexClient.Success(), confirmWorkspaceSwitch: () => MessageBoxResult.OK);
         committed.Workspaces.Add(current);
         committed.Workspaces.Add(target);
-        Assert(committed.TrySwitchWorkspace(current, requireConfirmation: false), "second initial workspace setup failed");
+        Assert(await committed.TrySwitchWorkspaceAsync(current, requireConfirmation: false), "second initial workspace setup failed");
         committed.ContextItems.Add(new ContextPackItem("Note", "clear", "test", "content", "clear", 0, "clear"));
-        Assert(committed.TrySwitchWorkspace(target), "confirmed workspace switch failed");
+        Assert(await committed.TrySwitchWorkspaceAsync(target), "confirmed workspace switch failed");
         Assert(committed.SelectedWorkspace?.Path == target.Path && committed.ContextItems.Count == 0, "successful switch did not commit atomically");
 
         var missing = new WorkspaceItem("missing", Path.Combine(scope.Root, "missing"), DateTimeOffset.UtcNow);
         committed.ContextItems.Add(new ContextPackItem("Note", "keep", "test", "content", "keep2", 0, "keep2"));
-        Assert(!committed.TrySwitchWorkspace(missing), "missing workspace switch succeeded");
+        Assert(!await committed.TrySwitchWorkspaceAsync(missing), "missing workspace switch succeeded");
         Assert(committed.SelectedWorkspace?.Path == target.Path && committed.ContextItems.Count == 1, "failed switch did not roll back");
     }
     finally
@@ -448,10 +459,10 @@ static async Task WorkspaceCancelRestoresSelectionAsync()
         var target = new WorkspaceItem("target", targetPath, DateTimeOffset.UtcNow);
         viewModel.Workspaces.Add(current);
         viewModel.Workspaces.Add(target);
-        Assert(viewModel.TrySwitchWorkspace(current, requireConfirmation: false), "initial workspace setup failed");
+        Assert(await viewModel.TrySwitchWorkspaceAsync(current, requireConfirmation: false), "initial workspace setup failed");
         viewModel.ContextItems.Add(new ContextPackItem("Note", "keep", "test", "content", "keep", 0, "keep"));
 
-        viewModel.WorkspaceSelection = target;
+        Assert(!await viewModel.TrySwitchWorkspaceAsync(target), "cancelled workspace switch committed");
 
         Assert(viewModel.WorkspaceSelection?.Path == current.Path, "cancel did not restore ComboBox selection");
         Assert(viewModel.SelectedWorkspace?.Path == current.Path, "cancel changed committed workspace");
@@ -477,13 +488,13 @@ static async Task WorkspaceCancelPreservesStateAsync()
         var target = new WorkspaceItem("target", targetPath, DateTimeOffset.UtcNow);
         viewModel.Workspaces.Add(current);
         viewModel.Workspaces.Add(target);
-        Assert(viewModel.TrySwitchWorkspace(current, requireConfirmation: false), "initial workspace setup failed");
+        Assert(await viewModel.TrySwitchWorkspaceAsync(current, requireConfirmation: false), "initial workspace setup failed");
         viewModel.ContextItems.Add(new ContextPackItem("Note", "keep", "test", "content", "keep", 0, "keep"));
         viewModel.HandoffTask = "keep handoff";
         var projectRootPath = viewModel.ProjectRootItems.Single().FullPath;
         var projectFileCount = viewModel.ProjectFileCount;
 
-        viewModel.WorkspaceSelection = target;
+        Assert(!await viewModel.TrySwitchWorkspaceAsync(target), "cancelled workspace switch committed");
 
         Assert(viewModel.ContextItems.Count == 1, "cancel cleared context");
         Assert(viewModel.HandoffTask == "keep handoff", "cancel cleared handoff");
@@ -509,10 +520,10 @@ static async Task WorkspaceFailureRestoresSelectionAsync()
         var missing = new WorkspaceItem("missing", Path.Combine(scope.Root, "missing"), DateTimeOffset.UtcNow);
         viewModel.Workspaces.Add(current);
         viewModel.Workspaces.Add(missing);
-        Assert(viewModel.TrySwitchWorkspace(current, requireConfirmation: false), "initial workspace setup failed");
+        Assert(await viewModel.TrySwitchWorkspaceAsync(current, requireConfirmation: false), "initial workspace setup failed");
         viewModel.ContextItems.Add(new ContextPackItem("Note", "keep", "test", "content", "keep", 0, "keep"));
 
-        viewModel.WorkspaceSelection = missing;
+        Assert(!await viewModel.TrySwitchWorkspaceAsync(missing), "failed workspace switch committed");
 
         Assert(viewModel.WorkspaceSelection?.Path == current.Path, "failed switch did not restore ComboBox selection");
         Assert(viewModel.SelectedWorkspace?.Path == current.Path, "failed switch changed committed workspace");
@@ -539,11 +550,11 @@ static async Task WorkspaceSuccessCommitsSelectionAsync()
         var target = new WorkspaceItem("target", targetPath, DateTimeOffset.UtcNow);
         viewModel.Workspaces.Add(current);
         viewModel.Workspaces.Add(target);
-        Assert(viewModel.TrySwitchWorkspace(current, requireConfirmation: false), "initial workspace setup failed");
+        Assert(await viewModel.TrySwitchWorkspaceAsync(current, requireConfirmation: false), "initial workspace setup failed");
         viewModel.ContextItems.Add(new ContextPackItem("Note", "clear", "test", "content", "clear", 0, "clear"));
         viewModel.HandoffTask = "clear handoff";
 
-        viewModel.WorkspaceSelection = target;
+        Assert(await viewModel.TrySwitchWorkspaceAsync(target), "successful workspace switch did not commit");
 
         Assert(viewModel.WorkspaceSelection?.Path == targetPath, "successful switch did not commit ComboBox selection");
         Assert(viewModel.SelectedWorkspace?.Path == targetPath, "successful switch did not commit workspace");
@@ -576,10 +587,10 @@ static async Task WorkspaceRestoreDoesNotReenterAsync()
         var target = new WorkspaceItem("target", targetPath, DateTimeOffset.UtcNow);
         viewModel.Workspaces.Add(current);
         viewModel.Workspaces.Add(target);
-        Assert(viewModel.TrySwitchWorkspace(current, requireConfirmation: false), "initial workspace setup failed");
+        Assert(await viewModel.TrySwitchWorkspaceAsync(current, requireConfirmation: false), "initial workspace setup failed");
         viewModel.ContextItems.Add(new ContextPackItem("Note", "keep", "test", "content", "keep", 0, "keep"));
 
-        viewModel.WorkspaceSelection = target;
+        Assert(!await viewModel.TrySwitchWorkspaceAsync(target), "cancelled workspace switch committed");
 
         Assert(confirmationCount == 1, "selection restore re-entered workspace switch");
         Assert(viewModel.WorkspaceSelection?.Path == current.Path, "selection restore did not keep current workspace");
@@ -588,6 +599,107 @@ static async Task WorkspaceRestoreDoesNotReenterAsync()
     {
         Environment.SetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH", previousOverride);
     }
+}
+
+static Task WorkspaceConfirmationResourcesAsync()
+{
+    var app = Path.Combine(FindRepositoryRoot(), "apps", "windows", "CodexBridge.App");
+    XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+    var resources = XDocument.Load(Path.Combine(app, "Themes", "Strings.xaml")).Root!.Elements()
+        .ToDictionary(element => (string)element.Attribute(x + "Key")!, element => element.Value);
+    foreach (var pair in new Dictionary<string, string>
+    {
+        ["UiWorkspaceSwitchConfirmTitle"] = UiStrings.WorkspaceSwitchConfirmTitle,
+        ["UiWorkspaceSwitchUnsavedMessage"] = UiStrings.WorkspaceSwitchUnsavedMessage,
+        ["UiWorkspaceSwitchAutoSaveMessage"] = UiStrings.WorkspaceSwitchAutoSaveMessage,
+        ["UiWorkspaceSwitchNoAutoSaveMessage"] = UiStrings.WorkspaceSwitchNoAutoSaveMessage,
+        ["UiWorkspaceSwitchConfirmQuestion"] = UiStrings.WorkspaceSwitchConfirmQuestion,
+        ["UiSwitchWorkspace"] = UiStrings.SwitchWorkspace,
+        ["UiCancel"] = "取消",
+    }) Assert(resources.TryGetValue(pair.Key, out var value) && value == pair.Value, $"confirmation resource missing or inconsistent: {pair.Key}");
+
+    Assert(UiStrings.WorkspaceSwitchConfirmationMessage(true) == "当前上下文或交接中有未保存的内容。\n\n切换前会先自动保存当前工作现场，然后清空当前界面内容并切换工作区。\n\n确认切换工作区吗？", "Auto Save ON explanation incorrect");
+    Assert(UiStrings.WorkspaceSwitchConfirmationMessage(false) == "当前上下文或交接中有未保存的内容。\n\n切换工作区后，当前界面中的这些内容将被清空。\n\n确认切换工作区吗？", "Auto Save OFF explanation incorrect");
+
+    var view = File.ReadAllText(Path.Combine(app, "WorkspaceSwitchConfirmView.xaml"));
+    var dialog = File.ReadAllText(Path.Combine(app, "WorkspaceSwitchConfirmView.xaml.cs"));
+    var vm = File.ReadAllText(Path.Combine(app, "ViewModels", "MainWindowViewModel.cs"));
+    Assert(view.Contains("PrimaryButtonStyle") && view.Contains("SecondaryButtonStyle") && view.Contains("TextPrimary") && view.Contains("DynamicResource Background"), "confirmation bypasses theme resources");
+    Assert(dialog.Contains("window.ShowDialog() == true") && !dialog.Contains("TrySwitchWorkspace"), "dialog must only return a choice");
+    Assert(vm.Contains("WorkspaceSwitchConfirmView.ShowConfirmation(AutoSaveBeforeWorkspaceSwitch)"), "confirmation does not read the current setting");
+    Assert(!vm.Contains("Current context or handoff contains unsaved content.") && !vm.Contains("Clear and switch workspace?"), "old English confirmation remains");
+    foreach (var file in new[] { "ViewModels/MainWindowViewModel.cs", "MainWindow.xaml.cs", "WorkspaceView.xaml.cs", "WorkspaceSwitchConfirmView.xaml.cs" })
+    {
+        var source = File.ReadAllText(Path.Combine(app, file));
+        foreach (var wait in new[] { ".GetAwaiter().GetResult()", ".Result", ".Wait()" })
+            Assert(!source.Contains(wait), $"synchronous async wait in {file}");
+    }
+    foreach (var file in new[] { "MainWindow.xaml.cs", "WorkspaceView.xaml.cs" })
+        Assert(File.ReadAllText(Path.Combine(app, file)).Contains("await viewModel.TrySwitchWorkspaceAsync(candidate)"), "UI no longer awaits existing switch pipeline");
+    return Task.CompletedTask;
+}
+
+static async Task WorkspaceConfirmationOutcomeAsync(bool confirm)
+{
+    await using var scope = await TestScope.CreateAsync();
+    var previousOverride = Environment.GetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH");
+    Environment.SetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH", Path.Combine(scope.Root, "workspaces.json"));
+    try
+    {
+        await using var importer = new CaptureInboxImporter(scope.Repository, inboxDirectory: scope.Inbox);
+        var confirmations = 0;
+        await using var vm = new MainWindowViewModel(scope.Repository, importer, FakeCodexClient.Success(), confirmWorkspaceSwitch: () =>
+        {
+            confirmations++;
+            return confirm ? MessageBoxResult.OK : MessageBoxResult.Cancel;
+        });
+        vm.EnableGitIntegration = false;
+        var current = new WorkspaceItem("current", scope.Root, DateTimeOffset.UtcNow);
+        var targetPath = Path.Combine(scope.Root, "target");
+        Directory.CreateDirectory(targetPath);
+        var target = new WorkspaceItem("target", targetPath, DateTimeOffset.UtcNow);
+        vm.Workspaces.Add(current);
+        vm.Workspaces.Add(target);
+        Assert(await vm.TrySwitchWorkspaceAsync(current, requireConfirmation: false), "workspace setup failed");
+        var row = new TurnRowViewModel(LoadFixture().Turns[0], true, "用户", "ChatGPT");
+        vm.Turns.Add(row);
+        var context = new ContextPackItem("Note", "keep", "test", "content", "keep", 0, "keep");
+        vm.ContextItems.Add(context);
+        vm.HandoffTask = "preserve until confirmed";
+        vm.AutoSaveBeforeWorkspaceSwitch = true;
+        var project = vm.ProjectRootItems.Single();
+        var session = vm.CurrentSessionTitle;
+        var source = vm.SourceIndex;
+        var sentinel = Path.Combine(scope.Root, "sentinel.txt");
+        File.WriteAllText(sentinel, "unchanged");
+        var commitCount = 0;
+        vm.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName != nameof(vm.SelectedWorkspace)) return;
+            commitCount++;
+            Assert(new WorkspaceSnapshotService().List(scope.Root).Count == 1, "commit occurred before auto save");
+        };
+
+        Assert(await vm.TrySwitchWorkspaceAsync(target) == confirm, "confirmation result was ignored");
+        Assert(confirmations == 1 && commitCount == (confirm ? 1 : 0), "confirmation or commit re-entered");
+        Assert(!vm.IsWorkspaceSwitchInProgress && row.IsSelected && vm.SourceIndex == source && vm.CurrentSessionTitle == session, "switch changed selection/session or left busy state");
+        Assert(File.ReadAllText(sentinel) == "unchanged", "switch changed a project file");
+        if (confirm)
+        {
+            var saved = new WorkspaceSnapshotService().List(scope.Root).Single().Snapshot!;
+            Assert(new SnapshotAutoIndexService().IsAuto(scope.Root, saved.SnapshotId), "confirmed save not indexed");
+            Assert(saved.Handoff.Task == "preserve until confirmed" && saved.ContextItems.Single().Key == context.Key, "source content was not saved");
+            Assert(vm.SelectedWorkspace?.Path == targetPath && vm.ContextItems.Count == 0 && vm.HandoffTask == "", "confirmed switch failed to commit");
+        }
+        else
+        {
+            Assert(vm.SelectedWorkspace?.Path == scope.Root && vm.WorkspaceSelection?.Path == scope.Root, "cancel changed workspace selection");
+            Assert(ReferenceEquals(vm.ProjectRootItems.Single(), project) && ReferenceEquals(vm.ContextItems.Single(), context) && vm.HandoffTask == "preserve until confirmed", "cancel mutated source state");
+            Assert(!Directory.Exists(WorkspaceSnapshotService.GetRoot(scope.Root)) && !File.Exists(SnapshotAutoIndexService.GetPath(scope.Root)), "cancel created an auto snapshot or index");
+            Assert(!Directory.Exists(Path.Combine(targetPath, ".ai")), "cancel initialized the target workspace");
+        }
+    }
+    finally { Environment.SetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH", previousOverride); }
 }
 
 static void Assert(bool condition, string message)
@@ -829,7 +941,7 @@ static async Task WorkspaceSnapshotCorruptDeleteCancelAsync()
         await using var viewModel = new MainWindowViewModel(scope.Repository, importer, FakeCodexClient.Success());
         var workspace = new WorkspaceItem("fixture", scope.Root, DateTimeOffset.UtcNow);
         viewModel.Workspaces.Add(workspace);
-        Assert(viewModel.TrySwitchWorkspace(workspace, requireConfirmation: false), "workspace setup failed");
+        Assert(await viewModel.TrySwitchWorkspaceAsync(workspace, requireConfirmation: false), "workspace setup failed");
         var corruptDirectory = Path.Combine(WorkspaceSnapshotService.GetRoot(scope.Root), "corrupt-cancel");
         Directory.CreateDirectory(corruptDirectory);
         File.WriteAllText(Path.Combine(corruptDirectory, "snapshot.json"), "{ invalid");
@@ -1276,7 +1388,7 @@ static async Task SnapshotImportFailureFeedbackAsync()
         await using var viewModel = new MainWindowViewModel(scope.Repository, importer, FakeCodexClient.Success());
         var workspace = new WorkspaceItem("fixture", scope.Root, DateTimeOffset.UtcNow);
         viewModel.Workspaces.Add(workspace);
-        Assert(viewModel.TrySwitchWorkspace(workspace, requireConfirmation: false), "workspace setup failed");
+        Assert(await viewModel.TrySwitchWorkspaceAsync(workspace, requireConfirmation: false), "workspace setup failed");
 
         var snapshot = SampleSnapshot("bad-sha") with
         {
@@ -1316,6 +1428,185 @@ static Task SnapshotImportErrorDialogResourcesAsync()
     Assert(strings.Contains("UiSnapshotImportWindowTitle", StringComparison.Ordinal) && strings.Contains("UiConfirm", StringComparison.Ordinal), "import error dialog resources are missing");
     Assert(view.Contains("SnapshotImportErrorView", StringComparison.Ordinal) && view.Contains("PrimaryButtonStyle", StringComparison.Ordinal), "import error dialog is not themed");
     return Task.CompletedTask;
+}
+
+static Task SnapshotAutoIndexIsAtomicAndFailClosedAsync()
+{
+    var root = Path.Combine(Path.GetTempPath(), $"codexbridge-auto-index-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(root);
+    try
+    {
+        var service = new SnapshotAutoIndexService();
+        Directory.CreateDirectory(Path.Combine(WorkspaceSnapshotService.GetRoot(root), "auto-1"));
+        Assert(service.MarkAuto(root, "auto-1"), "auto index did not mark snapshot");
+        Assert(service.IsAuto(root, "auto-1") && service.MarkAuto(root, "auto-1"), "auto index round trip or duplicate handling failed");
+        Assert(!File.Exists(SnapshotAutoIndexService.GetPath(root) + ".tmp"), "auto index temporary file remained");
+        Assert(service.PruneMissingEntries(root), "auto index prune failed");
+        Assert(!service.IsAuto(root, "missing"), "missing auto entry was not pruned");
+
+        File.WriteAllText(SnapshotAutoIndexService.GetPath(root), "{");
+        Directory.CreateDirectory(Path.Combine(WorkspaceSnapshotService.GetRoot(root), "manual"));
+        var corrupt = service.Read(root);
+        Assert(corrupt.IsCorrupt && !service.PruneMissingEntries(root), "corrupt auto index was not fail-closed");
+        Assert(Directory.Exists(Path.Combine(WorkspaceSnapshotService.GetRoot(root), "manual")), "corrupt auto index deleted a snapshot");
+        Assert(!service.MarkAuto(root, "new-auto"), "corrupt auto index was overwritten unexpectedly");
+    }
+    finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    return Task.CompletedTask;
+}
+
+static Task WorkspaceStateFingerprintDetectsStateAsync()
+{
+    var original = SampleSnapshot("fingerprint") with { Name = "one", CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow };
+    var metadataOnly = original with { SnapshotId = "other", Name = "two", CreatedAt = original.CreatedAt.AddHours(1), UpdatedAt = original.UpdatedAt.AddHours(2) };
+    Assert(WorkspaceStateFingerprint.Compute(original) == WorkspaceStateFingerprint.Compute(metadataOnly), "snapshot metadata changed the state fingerprint");
+    Assert(WorkspaceStateFingerprint.Compute(original) != WorkspaceStateFingerprint.Compute(original with { Selection = [original.Selection[0]] }), "selection change was missed");
+    Assert(WorkspaceStateFingerprint.Compute(original) != WorkspaceStateFingerprint.Compute(original with { ContextItems = [original.ContextItems[0], original.ContextItems[2], original.ContextItems[1]] }), "context order change was missed");
+    Assert(WorkspaceStateFingerprint.Compute(original) != WorkspaceStateFingerprint.Compute(original with { Handoff = original.Handoff with { Title = "changed" } }), "handoff change was missed");
+    Assert(WorkspaceStateFingerprint.Compute(original) != WorkspaceStateFingerprint.Compute(original with { Git = original.Git with { StatusFingerprint = "changed" } }), "git change was missed");
+    return Task.CompletedTask;
+}
+
+static async Task QuickSaveCreatesManualSnapshotAsync()
+{
+    await using var scope = await TestScope.CreateAsync();
+    var previousOverride = Environment.GetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH");
+    try
+    {
+        Environment.SetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH", Path.Combine(scope.Root, "workspaces.json"));
+        await using var importer = new CaptureInboxImporter(scope.Repository, inboxDirectory: scope.Inbox);
+        await using var viewModel = new MainWindowViewModel(scope.Repository, importer, FakeCodexClient.Success());
+        var workspace = new WorkspaceItem("fixture", scope.Root, DateTimeOffset.UtcNow);
+        viewModel.Workspaces.Add(workspace);
+        Assert(await viewModel.TrySwitchWorkspaceAsync(workspace, requireConfirmation: false), "workspace setup failed");
+        viewModel.HandoffTitle = "Quick save fixture";
+        var handoffBefore = viewModel.HandoffTitle;
+        Assert(await viewModel.QuickSaveCurrentSnapshotAsync(), "quick save failed");
+        var entries = new WorkspaceSnapshotService().List(scope.Root);
+        Assert(entries.Count == 1 && entries[0].Snapshot?.Name.StartsWith("快速保存 ", StringComparison.Ordinal) == true, "quick save name or snapshot missing");
+        Assert(!new SnapshotAutoIndexService().IsAuto(scope.Root, entries[0].Snapshot!.SnapshotId), "quick save was incorrectly indexed as automatic");
+        Assert(viewModel.HandoffTitle == handoffBefore && viewModel.SelectedWorkspace?.Path == scope.Root, "quick save changed current UI state");
+    }
+    finally { Environment.SetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH", previousOverride); }
+}
+
+static Task SnapshotSettingsRemainBackwardCompatibleAsync()
+{
+    var old = JsonSerializer.Deserialize<WindowSettings>("{\"Theme\":\"Dark\"}");
+    Assert(old is not null && old.AutoSaveBeforeWorkspaceSwitch == false && old.PromptSaveBeforeExit == false && old.AutoSnapshotRetentionCount == 10, "old settings did not receive Phase 4 defaults");
+    Assert(new WindowSettings(AutoSnapshotRetentionCount: 2).AutoSnapshotRetentionCount == 2, "settings record unexpectedly changed persisted value");
+    return Task.CompletedTask;
+}
+
+static async Task WorkspaceAutoSaveUsesAsyncPathAsync()
+{
+    var viewModelSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "CodexBridge.App", "ViewModels", "MainWindowViewModel.cs"));
+    var windowSource = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "CodexBridge.App", "MainWindow.xaml.cs"));
+    Assert(!viewModelSource.Contains("GetAwaiter().GetResult", StringComparison.Ordinal), "workspace switch still synchronously waits for async work");
+    Assert(!viewModelSource.Contains("TryAutoSaveBeforeWorkspaceSwitch()", StringComparison.Ordinal), "workspace switch still uses the synchronous auto-save path");
+    Assert(windowSource.Contains("await viewModel.TrySwitchWorkspaceAsync", StringComparison.Ordinal), "workspace UI handler does not await the async switch path");
+
+    await using var scope = await TestScope.CreateAsync();
+    var previousOverride = Environment.GetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH");
+    Environment.SetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH", Path.Combine(scope.Root, "workspaces.json"));
+    try
+    {
+    await using var importer = new CaptureInboxImporter(scope.Repository, inboxDirectory: scope.Inbox);
+    await using var viewModel = new MainWindowViewModel(scope.Repository, importer, FakeCodexClient.Success());
+    var current = new WorkspaceItem("current", scope.Root, DateTimeOffset.UtcNow);
+    var targetPath = Path.Combine(scope.Root, "target");
+    Directory.CreateDirectory(targetPath);
+    var target = new WorkspaceItem("target", targetPath, DateTimeOffset.UtcNow);
+    viewModel.Workspaces.Add(current);
+    viewModel.Workspaces.Add(target);
+    Assert(await viewModel.TrySwitchWorkspaceAsync(current, requireConfirmation: false), "initial workspace setup failed");
+    viewModel.AutoSaveBeforeWorkspaceSwitch = true;
+    var switchTask = viewModel.TrySwitchWorkspaceAsync(target, requireConfirmation: false);
+    Assert(await switchTask.WaitAsync(TimeSpan.FromSeconds(2)), "Git-unavailable workspace switch did not complete promptly");
+    }
+    finally { Environment.SetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH", previousOverride); }
+}
+
+static async Task WorkspaceAutoSaveCommitsAfterSaveAsync()
+{
+    await using var scope = await TestScope.CreateAsync();
+    var previousOverride = Environment.GetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH");
+    Environment.SetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH", Path.Combine(scope.Root, "workspaces.json"));
+    try
+    {
+    await using var importer = new CaptureInboxImporter(scope.Repository, inboxDirectory: scope.Inbox);
+    await using var viewModel = new MainWindowViewModel(scope.Repository, importer, FakeCodexClient.Success());
+    var current = new WorkspaceItem("current", scope.Root, DateTimeOffset.UtcNow);
+    var targetPath = Path.Combine(scope.Root, "target");
+    Directory.CreateDirectory(targetPath);
+    var target = new WorkspaceItem("target", targetPath, DateTimeOffset.UtcNow);
+    viewModel.Workspaces.Add(current);
+    viewModel.Workspaces.Add(target);
+    Assert(await viewModel.TrySwitchWorkspaceAsync(current, requireConfirmation: false), "initial workspace setup failed");
+    viewModel.AutoSaveBeforeWorkspaceSwitch = true;
+    viewModel.HandoffTask = "changed before switch";
+    Assert(await viewModel.TrySwitchWorkspaceAsync(target, requireConfirmation: false), "workspace switch did not complete after auto save");
+    var entries = new WorkspaceSnapshotService().List(scope.Root);
+    Assert(viewModel.SelectedWorkspace?.Path == targetPath, "workspace committed before auto save completed");
+    Assert(entries.Any(entry => entry.Snapshot?.Name.StartsWith("自动保存 · 切换工作区 ", StringComparison.Ordinal) == true), "auto snapshot was not saved before commit");
+    Assert(entries.Where(entry => entry.Snapshot?.Name.StartsWith("自动保存 · 切换工作区 ", StringComparison.Ordinal) == true).Any(entry => new SnapshotAutoIndexService().IsAuto(scope.Root, entry.Snapshot!.SnapshotId)), "auto snapshot was not indexed");
+    }
+    finally { Environment.SetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH", previousOverride); }
+}
+
+static async Task WorkspaceAutoSaveFailureKeepsSourceAsync()
+{
+    await using var scope = await TestScope.CreateAsync();
+    var previousOverride = Environment.GetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH");
+    Environment.SetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH", Path.Combine(scope.Root, "workspaces.json"));
+    try
+    {
+    await using var importer = new CaptureInboxImporter(scope.Repository, inboxDirectory: scope.Inbox);
+    await using var viewModel = new MainWindowViewModel(scope.Repository, importer, FakeCodexClient.Success());
+    var current = new WorkspaceItem("current", scope.Root, DateTimeOffset.UtcNow);
+    var targetPath = Path.Combine(scope.Root, "target");
+    Directory.CreateDirectory(targetPath);
+    var target = new WorkspaceItem("target", targetPath, DateTimeOffset.UtcNow);
+    viewModel.Workspaces.Add(current);
+    viewModel.Workspaces.Add(target);
+    Assert(await viewModel.TrySwitchWorkspaceAsync(current, requireConfirmation: false), "initial workspace setup failed");
+    viewModel.AutoSaveBeforeWorkspaceSwitch = true;
+    viewModel.HandoffTask = "must remain on source";
+    Directory.CreateDirectory(Path.Combine(scope.Root, ".ai"));
+    File.WriteAllText(Path.Combine(scope.Root, ".ai", "snapshots"), "blocked");
+
+    Assert(!await viewModel.TrySwitchWorkspaceAsync(target, requireConfirmation: false), "workspace switched after auto save failure");
+    Assert(viewModel.SelectedWorkspace?.Path == scope.Root, "source workspace was not preserved after auto save failure");
+    Assert(viewModel.HandoffTask == "must remain on source", "handoff changed after auto save failure");
+    Assert(viewModel.StatusText == UiStrings.AutoSnapshotSwitchFailed, "auto save failure status was not reported");
+    }
+    finally { Environment.SetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH", previousOverride); }
+}
+
+static async Task WorkspaceAutoSaveDeduplicatesUnchangedAsync()
+{
+    await using var scope = await TestScope.CreateAsync();
+    var previousOverride = Environment.GetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH");
+    Environment.SetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH", Path.Combine(scope.Root, "workspaces.json"));
+    try
+    {
+    await using var importer = new CaptureInboxImporter(scope.Repository, inboxDirectory: scope.Inbox);
+    await using var viewModel = new MainWindowViewModel(scope.Repository, importer, FakeCodexClient.Success());
+    var current = new WorkspaceItem("current", scope.Root, DateTimeOffset.UtcNow);
+    var targetPath = Path.Combine(scope.Root, "target");
+    Directory.CreateDirectory(targetPath);
+    var target = new WorkspaceItem("target", targetPath, DateTimeOffset.UtcNow);
+    viewModel.Workspaces.Add(current);
+    viewModel.Workspaces.Add(target);
+    Assert(await viewModel.TrySwitchWorkspaceAsync(current, requireConfirmation: false), "initial workspace setup failed");
+    Assert(await viewModel.QuickSaveCurrentSnapshotAsync(), "baseline quick save failed");
+    var before = new WorkspaceSnapshotService().List(scope.Root).Count;
+    viewModel.AutoSaveBeforeWorkspaceSwitch = true;
+    Assert(await viewModel.TrySwitchWorkspaceAsync(target, requireConfirmation: false), "unchanged workspace switch failed");
+    Assert(new WorkspaceSnapshotService().List(scope.Root).Count == before, "unchanged state created a duplicate auto snapshot");
+    Assert(viewModel.StatusText == UiStrings.Ready, "workspace switch did not complete normally after dedupe");
+    }
+    finally { Environment.SetEnvironmentVariable("CODEX_BRIDGE_WORKSPACES_PATH", previousOverride); }
 }
 
 static Task SnapshotPackageAllowsWorkspaceMismatchAsync()
